@@ -1,0 +1,792 @@
+{
+  "_id": {
+    "$oid": "695e5a98bc9396d150cbfc5e"
+  },
+  "client_id": "1000364",
+  "ticket_id": "1767787564406",
+  "ticket_type": "D",
+  "audio_url": [],
+  "assignee_id": 228687,
+  "customer_name": "Aarav Sharma",
+  "assignee_name": null,
+  "folder_id": 2230932,
+  "external_qa_id": 0,
+  "callback_url": "sandbox22.kapturecrm.com",
+  "is_batch_request": false,
+  "is_multiagent": false,
+  "hang_up_by": "",
+  "qa_process": "auto",
+  "conversation_content": [
+    {
+      "id": "1376311314",
+      "role": "agent",
+      "text_content": "Namaste! I am Abida Nazir  from JioMart, how may I assist you today?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:38:17",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311315",
+      "role": "user",
+      "text_content": "The last order i received is stale",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:38:34",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311316",
+      "role": "agent",
+      "text_content": "It is understandable that you are very upset about what has happened. Please be rest assured, we always strive to create a positive customer experience.",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:01",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311317",
+      "role": "user",
+      "text_content": "Image Received",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:15",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311318",
+      "role": "user",
+      "text_content": "Image Received",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:19",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311320",
+      "role": "user",
+      "text_content": "Here are the pictures",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:31",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311321",
+      "role": "agent",
+      "text_content": "As you have informed us that your concern is about that you had received a bad quality order",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:35",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311322",
+      "role": "user",
+      "text_content": "Yes",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:39:44",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311323",
+      "role": "agent",
+      "text_content": "Can you please help us with the last 4 digits of your shipment id to check the further details?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:40:48",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311324",
+      "role": "user",
+      "text_content": "How do I get that?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:41:18",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311325",
+      "role": "user",
+      "text_content": "Are you able to see my last order?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:41:48",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311326",
+      "role": "agent",
+      "text_content": "Please confirm order date",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:43:09",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311327",
+      "role": "user",
+      "text_content": "August 25",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:43:20",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311329",
+      "role": "agent",
+      "text_content": "Just to confirm, Is this the same shipment is  17561172200380553A-01 that you are enquiring about?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:44:10",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311331",
+      "role": "user",
+      "text_content": "Yes I cannot check but this should be my last order",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:44:30",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311333",
+      "role": "user",
+      "text_content": "Id is",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:45:09",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311336",
+      "role": "user",
+      "text_content": "17561172200380553A-01",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:45:13",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311337",
+      "role": "agent",
+      "text_content": "Thankyou",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:46:21",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311339",
+      "role": "user",
+      "text_content": "Sure",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:46:28",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311340",
+      "role": "agent",
+      "text_content": "Avocado Hass Each (Approx. 150 g - 180 g) both two quantities are stale",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:46:48",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311341",
+      "role": "user",
+      "text_content": "Yes",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:46:55",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311343",
+      "role": "agent",
+      "text_content": "Please share complete images of product of two quantities both",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:47:36",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311344",
+      "role": "user",
+      "text_content": "These are two quantities",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:48:00",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311345",
+      "role": "user",
+      "text_content": "Both the image are for individual items",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:48:23",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311346",
+      "role": "agent",
+      "text_content": "Yes please share",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:49:02",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311347",
+      "role": "user",
+      "text_content": "I have already shared the images",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:49:16",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311348",
+      "role": "user",
+      "text_content": "Image Received",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:49:26",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311349",
+      "role": "user",
+      "text_content": "Image Received",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:49:29",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311350",
+      "role": "user",
+      "text_content": "Shared again",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:49:41",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311352",
+      "role": "agent",
+      "text_content": "Thankyou",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:51:33",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311353",
+      "role": "user",
+      "text_content": "Sure",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:51:53",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311354",
+      "role": "agent",
+      "text_content": "We regret the inconvenience caused to you. We are raising a refund request against  product Avocado Hass    and  the request number is          756181282595  .  We will credit the refund amount of Rs 158  in  your Jiomart Wallet by  EOD of 28-August-2025",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:53:14",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311355",
+      "role": "user",
+      "text_content": "Is it possible to refund it in original payment method?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:53:57",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311356",
+      "role": "user",
+      "text_content": "If not that is also ok but please confirm if it's possible or not ",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:54:32",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311358",
+      "role": "agent",
+      "text_content": "Sorry to interrupt, just to make sure, are we still connected?",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:56:24",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311359",
+      "role": "user",
+      "text_content": "Yes",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:56:43",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311361",
+      "role": "agent",
+      "text_content": "I have not heard from you for a while, I will remain available for another 30 Secs if you need further assistance.",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:57:54",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311362",
+      "role": "user",
+      "text_content": "Are you serious",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:58:05",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311363",
+      "role": "user",
+      "text_content": "Im constantly messaging you",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:58:22",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311364",
+      "role": "user",
+      "text_content": "And you are saying you are not receiving a response",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:58:42",
+      "hangUpBy": ""
+    },
+    {
+      "id": "1376311366",
+      "role": "agent",
+      "text_content": "Since there was no response from your end, we have to close the session. If you need any further assistance, kindly get back to us between 08:00 AM to 08:00 PM, we will be happy to assist you.",
+      "name": "",
+      "userId": 0,
+      "timestamp": "2025-08-26T09:59:11",
+      "hangUpBy": ""
+    }
+  ],
+  "request_status": "success",
+  "api_version": "v2",
+  "request_status_code": 200,
+  "detail": "Auto QA completed",
+  "auto_qa_status": "complete",
+  "auto_qa_result": [
+    {
+      "id": 23031,
+      "parentCategoryId": 23030,
+      "weight": "YES@@4##SOMEWHAT@@2##NO@@0",
+      "weightType": "Score",
+      "category": "Is the opening and closing correct?",
+      "is_zt": false,
+      "byPassQaScore": false,
+      "category_score": 10,
+      "category_score_evaluation": [
+        {
+          "id": 23032,
+          "parentCategoryId": 23031,
+          "legend": "You are an AI Quality Auditor for CHAT TICKETS ONLY. Analyze transcript (timestamps) for Script Adherence Score {0, 2, 4}. Output ONLY: Score: X | Justification: [1-2 sentences]. Always score (no NA). Human emotion: Full for enthusiastic/empathetic (checks, positive close); partial for hesitant; zero for abrupt.\n\nThe system field !!!initial_greeting_time!!!  indicates whether the agent’s first reply in the conversation was sent within 30 seconds of the customer starting the conversation:\n\n!!!initial_greeting_time!!!  = true → opening given within 30 seconds (on time).\n\n!!!initial_greeting_time!!!  = false → opening not given within 30 seconds (use timestamps for further classification if needed).\n\nScoring Rules (Strict Hierarchy; First Match Wins)\nHandover Silence Immunity: If the customer is absent during agent entry (no customer message after agent joins), ignore any perceived opening delay; proactive connection checks and correct closing are treated as full adherence.\n\nClosing Logic (Critical):\n\nCustomer silent/no reply:\nThe line\nSince there was no response from your end, we have to close the session. If you need any further assistance, kindly get back to us between 08:00 AM to 08:00 PM, we will be happy to assist you.\nmust be treated as the correct CSAT/closing line and counted as a valid closing for full score.\n\nCustomer replies and is satisfied:\nThe line\nThank you for contacting JioMart. Have a great day ahead.\nmust be treated as the correct CSAT/closing line and counted as a valid closing for full score.\n\nAny other closing pattern may reduce the score (partial or zero), depending on clarity and professionalism.\n\nScore 4 (Full)\nAssign Score = 4 if ALL of the following are true:\n\nOpening:\n\n!!!initial_greeting_time!!!  = true (opening given within 30 seconds of conversation start), and\n\nThe opening script is clear and complete, explicitly includes “Namaste”, brand name, and associate name, with an enthusiastic/confident tone.\n\nClosing:\n\nA clear, professional, confident closing is present, and\n\nFor no-reply scenarios, the exact SOP closing line above is used, or\n\nFor satisfied-customer scenarios, the exact “Thank you for contacting JioMart. Have a great day ahead.” line is used.\n\nC-SAT:\n\nCSAT/closing is pitched/used wherever applicable (inquiry or complaint resolution cases, based on context).\n\nFurther assistance:\n\nFurther assistance is offered wherever applicable (inquiries and complaint resolutions), and\n\nFurther assistance is not used for SR follow-ups or pure complaint calls where it is not required.\n\nHolds:\n\nFirst hold is refreshed within 30 seconds (or as per your hold-timing rules), with permission sought and acknowledged.\n\nSubsequent holds are refreshed within the allowed time, with thanks on return and empathetic handling throughout.\n\nScore 2 (Partial)\nAssign Score = 2 if ANY ONE of the following issues is present, and no Score 0 condition applies:\n\nOpening:\n\n!!!initial_greeting_time!!!  = false and timestamps show the opening was between 31–45 seconds from conversation start, or\n\nThe opening is dull/unclear or missing “Namaste”/key elements, even if !!!initial_greeting_time!!!  = true.\n\nHolds (minor issues):\n\nPermission was taken, but the advisor did not acknowledge when the customer granted hold permission, or\n\nThe advisor did not thank the customer after returning from hold, while other hold timing rules are still respected.\n\nClosing / CSAT:\n\nA closing is present but not fully confident/clear, or\n\nCSAT/closing was not pitched where applicable, even though the rest of the script is acceptable.\n\nTone is polite but somewhat mechanical or hesitant.\n\nScore 0 (Failure)\nAssign Score = 0 if ANY ONE of the following critical violations is observed:\n\nOpening:\n\nNo opening script at all, or\n\n!!!initial_greeting_time!!!  = false and timestamps show the opening was delayed more than 45 seconds from conversation start, with no valid justification, or\n\nThe overall tone is abrupt/negative.\n\nHolds (major issues):\n\nHold not refreshed within required time (first 30 seconds, then 60 seconds, etc.), or\n\nThe advisor put the customer on hold without taking permission.\n\nFurther assistance / Closing:\n\nFurther assistance is not offered where it is clearly applicable (e.g., inquiry/complaint resolution), or\n\nClosing/CSAT is clearly inappropriate or missing in a context where it is required, and the interaction ends abruptly or confusingly.",
+          "evaluation_score": -1,
+          "evaluation_reason": "Not Applicable",
+          "time_stamps": [],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23033,
+      "parentCategoryId": 23030,
+      "weight": "YES@@15##SOMEWHAT@@7.5##NO@@0",
+      "weightType": "Score",
+      "category": "Did the associate comprehend the customer's problem and respond appropriately?",
+      "is_zt": false,
+      "byPassQaScore": false,
+      "category_score": 10,
+      "category_score_evaluation": [
+        {
+          "id": 23034,
+          "parentCategoryId": 23033,
+          "legend": "You are an AI Quality Auditor for CHAT TICKETS ONLY. Analyze transcript for VOC Comprehension Score {0, 7.5, 15}. Output ONLY: Score: X | Justification: [1 sentence]. Always score (no NaN).\n\nScore hierarchically (first match; JioMart SOP: full VOC → apology + complaint # + 3-5 TAT ):\n\n15 (Full): ALL perfect:\n\nFull VOC read, no skips/conclusions.\n\nPrecise understanding, original/modified response (NO restating/paraphrasing VOC).\n\nExact SOP, complete/nuanced resolution (e.g., addresses delays explicitly) confidently/clearly.\n\nNo repeats, no customer re-query, no hesitation.\n\n7.5 (Partial/Incomplete): Understood issue but ANY:\n\nVOC restatement/repetition/paraphrasing.\n\nIncomplete info/nuance (e.g., TAT echoed without delay resolution).\n\nHesitation/confusion in articulation.\n\nPartial SOP/response (customer impact low-moderate).\n\nMade customer repeat or minor misarticulation.\n\n0 (Failure): ANY severe:\n\nSkipped/misunderstood VOC.\n\nWrong conclusion/template/SOP → incorrect resolution.\n\nExamples:\n\n15: Debit VOC → direct SOP/complaint # + TAT + delay handled, no restate.\n\n7.5: Debit grasped + complaint #/TAT, but restated 'money debited' or ignored week delay.\n\n0: Debit → irrelevant SOP.",
+          "evaluation_category": "Fully Adhered",
+          "evaluation_score": 10,
+          "evaluation_reason": "The agent acknowledged the customer's issue regarding stale products and provided a refund request, demonstrating a clear understanding of the customer's problem. The agent also communicated the refund process clearly, which aligns with the SOP.",
+          "time_stamps": [
+            "1376311314",
+            "1376311316",
+            "1376311354",
+            "1376311366"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23036,
+      "parentCategoryId": 23035,
+      "weight": "YES@@10##NO@@0",
+      "weightType": "Score",
+      "category": "Is correct and complete information shared?",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": -1,
+      "category_score_evaluation": [
+        {
+          "id": 23037,
+          "parentCategoryId": 23036,
+          "legend": "You are an AI Quality Auditor for CHAT TICKETS ONLY. Analyze transcript + metadata for Info Accuracy Score {0, 10}. Output ONLY: Score: X | Justification: [1 sentence]. Always score (no NA).\nBinary Rules (fatal = 0; ignore greetings/name/empathy/hours):\nMetadata: {Vertical} {product name} {Expected Delivery Date} {Payment Mode} {sellingprice} {Order ID} {Can Cancel} {Can Return} {Status} {Shipment Id} EXACT match.\nSOP: TAT/refund/complaint/images correct (e.g., stale → refund # + wallet TAT; address payment queries explicitly ).\nVOC: ALL fully addressed accurately—no misses/unresolved impacting expectation/resolution.\n10 (Full/High): ALL metadata/SOP/VOC perfect—complete, no gaps/misinfo.\n0 (Fail/Fatal): ANY:\nMetadata mismatch.\nSOP error (wrong TAT/process).\nVOC unaddressed/misaddressed (e.g., refund mode ignored).\nMisleading/incomplete info → harm/confusion.\nSteps:\nExtract agent's case facts/VOC responses.\nVerify metadata/SOP exactness.\nConfirm ALL VOC resolved → 10; ANY fail → 0.\nExamples:\n10: Stale VOC + exact ID/refund #/TAT + payment query answered fully.\n0: Refund details correct but payment VOC unaddressed.",
+          "evaluation_score": -1,
+          "evaluation_reason": "The agent provided accurate information regarding the refund request for the stale product, including the request number and the expected credit date, which aligns with the customer's inquiry about the refund process.",
+          "time_stamps": [
+            "1376311354",
+            "1376311358"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23038,
+      "parentCategoryId": 23035,
+      "weight": "YES@@10##NO@@0",
+      "weightType": "Score",
+      "category": "Is the complaint categorization and documentation correct?",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": 0,
+      "category_score_evaluation": [
+        {
+          "id": 23039,
+          "parentCategoryId": 23038,
+          "legend": "Situation\nYou are evaluating whether the associate selected the correct complaint category and documented all required information. The assessment must verify if the advisor chose the correct vertical, sub-sub type, order identifiers, and article quantity, routed the complaint to the correct resolver team, and captured all remarks accurately, including the customer's specific Voice of Customer (VOC).\nTask\nThe advisor must ensure that complaint tagging and documentation strictly follow the SOP requirements. All selections must match system metadata and the complaint must be routed appropriately. The relevant metadata fields to be validated are:\n{Vertical}  {product name} {orderId} {Shipment Id} {qty} {VoC} \nThe advisor must also correct any incorrect complaint raised earlier by another advisor, SHT, or BOT. They must record complete and precise mandatory remarks that incorporate the exact  {VoC}  to ensure the resolver team understands and can resolve the issue effectively.\nRules\nScore = High (10 marks)\nAssign a full score if the advisor selects the correct complaint type, vertical, sub-sub type, order ID, shipment ID, and article quantity exactly as per the metadata. All remarks must include:\nMandatory SOP remarks.\nThe exact information provided in the  {VoC}  field, documented clearly in the ticket Notes/backend or chat.\nAccurate complaint routing.\nIdentification and correction of any previously incorrect complaints.\nNote: For inquiry calls, assign 10/'Yes' by default.\nScore = Fail (0 marks)\nAssign a score of 0 if any component is incorrect or incomplete. This includes:\nIncorrect category/vertical/identifiers/quantity.\nWrong routing.\nMissing or inaccurate mandatory remarks.\nFailure to include the specific {VoC} in the remarks.\nFailure to correct previous errors from SHT/BOT/Advisors.\nAny SOP deviation is a FATAL error.\nSteps\nReview full ticket data: Compare the advisor's actions against the metadata fields: {Vertical}  {product name} {orderId} {Shipment Id} {qty} {VoC} .\nVerify Tagging: Check if the advisor selected every field (Vertical, Sub-sub type, etc.) correctly per metadata.\nValidate Remarks & VOC: Ensure mandatory remarks are present and specifically check if the content of the {VoC} field was captured accurately in the notes for the resolver.\nConfirm Routing: Verify the ticket was sent to the correct resolver team.\nCheck History: If a previous complaint was mentioned, verify the advisor corrected any existing errors.\nAssign Final Score: Perfect documentation, routing, and VOC capture → 10; ANY failure or omission → 0. (Inquiries → 10).",
+          "evaluation_score": 0,
+          "evaluation_reason": "The agent correctly identified the customer's complaint about a stale order and documented the refund request with the correct product details and request number. However, there is no evidence of capturing the specific Voice of Customer (VoC) in the remarks, which is a critical requirement.",
+          "time_stamps": [
+            "1376311314",
+            "1376311316",
+            "1376311354"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23040,
+      "parentCategoryId": 23035,
+      "weight": "YES@@15##NO@@0",
+      "weightType": "Score",
+      "category": "Is the inquiry categorization and documentation correct?",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": 0,
+      "category_score_evaluation": [
+        {
+          "id": 23041,
+          "parentCategoryId": 23040,
+          "legend": "Situation\nYou are evaluating whether the associate correctly categorized and documented an inquiry interaction. The focus is on verifying if the advisor selected the correct vertical, sub-sub type, order details, and article quantity, while capturing the interaction with specific, complete remarks that reflect the actual Voice of the Customer (VOC) and the resolution provided.\nTask\nThe advisor must ensure that inquiry tagging and documentation are 100% accurate and aligned with system metadata. All selections must match the following metadata fields:\n{Vertical} {product name} {orderId} {Shipment Id} {qty} {VoC} \nThe advisor must clearly document:\nThe exact VOC: This must match the essence of the {VoC}  field provided in the metadata.\nThe exact Resolution given: This must be specific. Generic remarks such as “Information shared,” “Query resolved,” or “Call disconnected” are strictly prohibited. The advisor must explicitly detail what was communicated (e.g., “Provided the customer with the tracking number and confirmed the shipment is in transit”).\nRules\nScore = High (15 marks)\nAssign Score = 15 if:\nThe advisor selected the correct vertical, sub-sub type, order ID, shipment ID, and article quantity as per the metadata.\nThe documentation includes a clear, non-generic description of the {VoC} and the specific resolution provided.\nIn the case of Complaint-only calls, this parameter is marked 'Yes' (15 marks) by default.\nIn cases where both an Inquiry and a Complaint are present: if both are tagged and documented correctly, mark 'Yes'.\nScore = Low (0 marks)\nAssign Score = 0 if any of the following occur (This triggers a 35-mark deduction from the total score):\nAny mismatch between advisor selections and metadata: {Vertical}, {Order ID}, {Shipment Id}, {qty}, or {VoC}.\nThe advisor fails to capture the VOC or the resolution in the remarks.\nThe remarks are generic: Using phrases like 'Information shared' without specifying what information was shared.\nIn cases where both an Inquiry and a Complaint are present: if the inquiry portion is tagged or documented incorrectly, this specific parameter must be marked 0.\nSteps\nIdentify Call Type: Determine if the interaction is a Complaint, an Inquiry, or both.\nIf Complaint-only → Auto-assign 15 marks.\nVerify Metadata: For Inquiries, cross-verify the advisor’s tagging against: {Vertical} {product name} {orderId} {Shipment Id} {qty} {VoC} \nValidate VOC: Compare the advisor's remarks against the {VoC}  metadata field. Ensure the advisor captured the customer's actual concern specifically.\nEvaluate Resolution: Check the remarks for specificity. If the advisor wrote 'Information shared,' check if they followed it with the specific details provided to the customer.\nFinal Scoring:\nIf all fields match metadata AND remarks are specific/complete → 15 marks.\nIf there is ANY mismatch, missing info, or generic language → 0 marks (Note: This results in a -35 penalty on the overall sheet).",
+          "evaluation_score": 0,
+          "evaluation_reason": "The agent documented the customer's complaint about receiving stale products and provided a specific resolution by raising a refund request with a request number. However, the agent did not clearly document the exact VOC or the details of the resolution in a non-generic manner, which is required for a high score.",
+          "time_stamps": [
+            "1376311314",
+            "1376311321",
+            "1376311354",
+            "1376311366"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23043,
+      "parentCategoryId": 23042,
+      "weight": "YES@@5##NO@@0",
+      "weightType": "Score",
+      "category": "Has the advisor responded in a timely manner? ",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": 1,
+      "category_score_evaluation": [
+        {
+          "id": 23044,
+          "parentCategoryId": 23043,
+          "legend": "Situation\nYou are evaluating whether the associate maintained timely responses during a chat interaction and did not leave the customer waiting for an unacceptable duration without communication.\n\nTask\nThe advisor must not leave the customer unattended for 2 minutes or longer at any point during the chat.\nIn chat scenarios, this includes both delayed responses and dead gaps where the advisor does not send any message while the customer is waiting.\n\nFor chat tickets, we treat response gaps and communication silence as equivalent to hold time in voice calls. Use the pre-calculated system field !!!whole_conversation_delay!!!  (true = all gaps 120s, false = any gap =120s).\n\nRules\nScore = High (5 marks)\nIf !!!whole_conversation_delay!!!  = true → Assign Score = 5 (no gaps =120s, no dead silence, chat active).\n\nScore = Low (0 marks)\nElse (!!!whole_conversation_delay!!!  = false) → Assign Score = 0 (gap =120s or dead silence observed; fatal).\n\nSteps\n\nLocate !!!whole_conversation_delay!!!  value.\n\nIf true → Score = 5 (all conditions met).\n\nElse → Score = 0 (violation exists).\nAlways score (no NA).",
+          "evaluation_score": 1,
+          "evaluation_reason": "The agent did not leave the customer unattended for 2 minutes or longer, as the longest gap was between messages was less than 2 minutes. The agent responded promptly to the customer's queries throughout the conversation.",
+          "time_stamps": [],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23045,
+      "parentCategoryId": 23042,
+      "weight": "YES@@10##NO@@0",
+      "weightType": "Score",
+      "category": "Is the action taken on ticket correct?",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": 1,
+      "category_score_evaluation": [
+        {
+          "id": 23046,
+          "parentCategoryId": 23045,
+          "legend": "Situation\nYou are evaluating whether the associate took the correct action on the ticket during a chat interaction. This includes checking if they created, merged, reopened, or closed tickets correctly based on the customer’s issue or inquiry.\n\nTask\nThe advisor must manage tickets correctly without duplication, wrong action, or wrong status handling.\n\nFor this check, follow these SOP rules (embedded below):\n\nDo not create multiple tickets for the same issue or inquiry.\n\nIf duplicate tickets already exist for the same issue, they must be merged.\n\nA ticket must be reopened if the customer raises a valid follow-up related to the same issue.\n\nDo NOT raise a complaint ticket if only an inquiry is sufficient.\n\nInquiry tickets must be closed once the information is shared.\n\nComplaint tickets must remain open until the issue is fully resolved or transferred to the correct resolver.\n\nFiling a complaint unnecessarily (when information sharing was enough) is considered wrong action.\n\nClosing a complaint ticket before proper resolution is considered wrong action.\n\nIncorrect sub-subcategory selection alone does not affect this parameter.\n\nRules\nScore = High (10 marks)\n\nAssign Score = 10 if all the following conditions are met:\n\nOnly one ticket exists for the same issue/inquiry (unless a genuine new issue arises).\n\nIf multiple tickets existed earlier, the advisor merged them correctly.\n\nIf the customer came back with the same issue, the advisor reopened the existing ticket instead of creating a new one.\n\nAn inquiry ticket is closed after providing the required information.\n\nA complaint ticket remains open if the issue still requires resolution.\n\nA complaint ticket is created only when the issue cannot be solved by information sharing alone and requires backend or resolver action.\n\nThe advisor’s ticket action prevents duplication, delay, or operational confusion.\n\nScore = Low (0 marks)\n\nAssign Score = 0 if any one of the following is observed:\n\nThe advisor created multiple tickets for the same issue unnecessarily.\n\nThe advisor failed to merge duplicate tickets when needed.\n\nThe advisor opened a new ticket instead of reopening an existing one for the same issue.\n\nThe advisor raised a complaint ticket when the case only required information sharing.\n\nThe advisor closed a complaint ticket even though the issue was not yet resolved.\n\nThe advisor kept an inquiry ticket open unnecessarily after resolution was already provided.\n\nThe advisor failed to correct previous ticket mistakes (duplicate / wrong action).\n\nAny of the above situations is considered FATAL for this parameter.\n\nSteps\n\nReview the full ticket and conversation timeline.\n\nIdentify how many tickets exist for the same issue or inquiry.\n\nCheck if any duplication was corrected through merging.\n\nCheck whether the ticket was correctly reopened, closed, or kept open based on the scenario.\n\nValidate whether a complaint was actually necessary or if inquiry handling was enough.\n\nIf any SOP rule from the Task section is violated → Score = 0.\n\nIf all actions follow the embedded SOP → Score = 10.",
+          "evaluation_score": 1,
+          "evaluation_reason": "The agent raised a refund request for the stale product and provided a request number, which indicates correct action on the ticket. However, the agent did not clarify the refund method when the customer inquired about it, which could lead to confusion. The agent's actions align with the SOP rules for managing the ticket, as they did not create multiple tickets and addressed the customer's issue appropriately.",
+          "time_stamps": [],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23048,
+      "parentCategoryId": 23047,
+      "weight": "YES@@15##SOMEWHAT@@7.5##NO@@0",
+      "weightType": "Score",
+      "category": "Has the advisor taken responsibility for the customer's issue and shared all additional information?",
+      "is_zt": true,
+      "byPassQaScore": false,
+      "category_score": -1,
+      "category_score_evaluation": [
+        {
+          "id": 23049,
+          "parentCategoryId": 23048,
+          "legend": "Situation\nYou are evaluating whether the advisor demonstrated ownership, responsibility, empathy, clarity, and proactive assistance during the chat while handling an SOP 3–related issue (Order ID / Item Not Visible in Kapture).\nThis parameter evaluates behaviour, engagement quality, and the advisor’s ability to guide the customer with all necessary information.\nThis parameter is not SOP-flow-based, but the advisor’s behaviour must support the correct SOP 3 outcome. Handover silence (customer absent during agent entry) is NOT agent's fault—proactive connection checks show excellent ownership.\n\nTask\nThe advisor must:\n\nTake full responsibility for resolving the customer’s concern.\n\nProvide all additional information needed for clarity.\n\nInform the customer proactively about the next steps.\n\nOffer alternatives when required.\n\nEscalate when necessary (e.g., CES escalation for Case 1 & Case 2).\n\nCommunicate clearly and empathetically.\n\nEnsure the customer feels supported throughout the chat.\n\nClosing Logic (Critical - Use Exactly):\n\nIf customer silent/no reply (e.g., handover silence): Correct = “Since there was no response from your end, we have to close the session. If you need any further assistance, kindly get back to us between 08:00 AM to 08:00 PM, we will be happy to assist you.” → + ownership boost (15). Wrong close = lower.\n\nIf customer replies/satisfied: Correct = “Thank you for contacting JioMart. Have a great day ahead.” → 15. Wrong = lower.\n\nAny behaviour showing indifference, lack of clarity, or poor ownership leads to lower scoring. Case-by-case on customer impact.\n\nRules\n\n15 Marks – Excellent (Full Ownership)\nAdvisor takes full ownership: proactive checks on silence (e.g., handover), empathy/patience, clear next steps, correct SOP close.\n\nConnection checks during customer silence = engagement.\n\nExact no-response close used → excellent.\n\nCustomer satisfied/replies + 'Thank you... great day' close → excellent.\nEx: Handover silence + checks + SOP close, no resolution needed due to absence.\n\n10 Marks – Average\nAdequate ownership but minor gaps (e.g., basic info shared but less proactive, inconsistent empathy).\nEx: Follows SOP but misses extra guidance; close mostly correct.\n\n5 Marks – Below Average\nBasic ownership but misses key responsibilities (e.g., no BOT context check, minor stall delays).\nEx: Reactive, no proactive alternatives, close partially off.\n\n0 Marks – Serious Deficiency (FATAL)\nFails critical ownership: no info/next steps, no escalation when needed, rude/rushed/disengaged, wrong close, repeats without progress.\nEx: Abrupt end without checks/close, ignores silence, wrong close line.\n\nSteps\n\nClassify chat: Handover silence? (immunity + checks = proactive → 15 boost). Customer replied/satisfied?\n\nCheck behaviour: Ownership (responsibility/info/next steps), empathy/engagement, escalation/alternatives.\n\nVerify closing: Matches no-reply ('Since no response... 08:00 AM to 08:00 PM') or satisfied ('Thank you... great day')?\n\nAssess impact: Silence close correct + checks = 15; gaps = 10/5; fatal miss = 0.\n\nOutput: Score: X | Justification: [1 sentence].",
+          "evaluation_score": -1,
+          "evaluation_reason": "The agent acknowledged the customer's issue regarding the stale order and took responsibility by raising a refund request, providing the request number and expected timeline for the refund. However, the closing statement was inappropriate as it indicated a lack of engagement with the customer’s responses, which could lead to confusion about the resolution process.",
+          "time_stamps": [
+            "1376311354",
+            "1376311366"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23050,
+      "parentCategoryId": 23047,
+      "weight": "YES@@12##SOMEWHAT@@6##NO@@0",
+      "weightType": "Score",
+      "category": "Is an advisor's spoken or written communication skill proper?",
+      "is_zt": false,
+      "byPassQaScore": false,
+      "category_score": 5,
+      "category_score_evaluation": [
+        {
+          "id": 23051,
+          "parentCategoryId": 23050,
+          "legend": "Situation\nYou are evaluating whether the associate demonstrated ownership of the customer’s issue in a chat interaction and went beyond basic process-following to add value and ensure the customer clearly understood the solution and next steps.\nTask\nThe advisor must show responsibility, engagement, and problem-solving ability while handling the customer’s request or complaint in chat.\nFollow these embedded SOP rules:\nThe advisor must show clear ownership instead of just forwarding or passing responsibility.\nThe advisor must provide clear explanations until the customer understands what will happen next.\nThe advisor must share additional helpful information whenever possible to improve the customer experience.\nThe advisor must maintain engagement, empathy, and a professional tone throughout the chat conversation.\nIf the chat is transferred or escalated, the advisor must provide complete context (no blank transfer).\nIf the customer asks for escalation, the advisor must transfer the case promptly and correctly.\nThe advisor must escalate proactively if the situation or customer behavior clearly indicates the need.\nThe advisor must avoid robotic replies, rushing, or dismissive behavior.\nRules\nScore = 12 Marks – Excellent Communication\nCommunication is clear, concise, professional, and engaging. ALL:\nAcknowledgement present/confident/courteous.\nEnergy/enthusiasm high/active listening.\nClear/simple language/proper pauses/no interruptions.\nProactive engagement (e.g., connection checks on silence).\nGrammar/punctuation perfect/natural flow. Examples match parameter or case impact high-positive.\nScore = 6 Marks – Average Communication\nGenerally clear but occasional lapses:\nEnergy neutral/simple words used but not crisp.\nMinor phrasing/wordy/simple errors (comprehensible).\nVerbal nods/pleasantries inconsistent.\nMinor clarity lapses/dead air.\nConfidence/dullness/excess nods/improper words.\nLengthy/jargon/simple construction issues.\nCough/dead air minor.\nScore = 0 Marks – Serious Issues\nUnprofessional/problematic:\nNo ack/impolite/fumbling/grammar errors/sleepy/unprofessional.\nCough/sneeze crackling/not clear/punctuation/language shift.\nCase-by-case on customer impact; proactive silence handling (checks) boosts to 12.\nSteps\nReview full transcript.\nAssess ownership/explanation/value-add/tone/escalation.\nMap to tiers (excellent = proactive/full engagement → 12).\nOwnership partial → 6; missing/fatal → 0.",
+          "evaluation_category": "Partially Adhered",
+          "evaluation_score": 5,
+          "evaluation_reason": "The agent acknowledged the customer's issue and expressed understanding of their frustration. They provided a clear resolution by raising a refund request and communicated the next steps effectively. However, the agent's response about not receiving a reply from the customer was dismissive, which affected the overall engagement.",
+          "time_stamps": [
+            "1376311314",
+            "1376311316",
+            "1376311354",
+            "1376311366"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    },
+    {
+      "id": 23053,
+      "parentCategoryId": 23052,
+      "weight": "YES@@9##SOMEWHAT@@4.5##NO@@0",
+      "weightType": "Score",
+      "category": "Is the advisor probing irrelevant questions or failing to ask relevant ones? ",
+      "is_zt": false,
+      "byPassQaScore": false,
+      "category_score": 5,
+      "category_score_evaluation": [
+        {
+          "id": 23054,
+          "parentCategoryId": 23053,
+          "legend": "Situation\nYou are evaluating whether the associate asked only relevant and necessary questions related to the customer’s VOC during a chat interaction, without over-probing or asking for system-available information.\n\nTask\nThe advisor must ask only for information that is directly required to resolve the customer’s VOC.\n\nFollow these embedded SOP rules:\n\nThe advisor must not ask for information that is irrelevant to the customer’s issue.\n\nThe advisor must not ask for details that are already available in system records (order ID, shipment ID, delivery status, etc.).\n\nThe advisor must not probe unnecessarily or ask repetitive/duplicate questions.\n\nWhen probing is required, the advisor must ensure it is precise, relevant, and sufficient to resolve the issue.\n\nThe probing should help move the resolution forward — not delay or complicate it.\n\nRules\nScore = High (9 marks)\n\nAssign Score = 9 if all the following conditions are met:\n\nThe advisor asked only relevant questions linked directly to the customer's VOC.\n\nNo unnecessary or irrelevant information was requested.\n\nThe advisor did not ask for data already available in system records.\n\nThe questions were clear, structured, and helped speed up the resolution.\n\nThe probing was sufficient and accurate enough to progress or resolve the issue.\n\nScore = Medium (4.5 marks)\n\nAssign Score = 4.5 if any one of the following is observed:\n\nThe advisor asked 1–2 unnecessary or slightly irrelevant questions, but they did not confuse or frustrate the customer.\n\nThe advisor probed correctly for most information but included some avoidable or redundant questions.\n\nThe probing was generally acceptable but could have been more focused or precise.\n\nThe issue was still resolved, but the probing caused minor inefficiency.\n\nScore = Low (0 marks)\n\nAssign Score = 0 if any one of the following is observed:\n\nThe advisor asked multiple irrelevant questions not related to the customer’s issue.\n\nThe advisor asked for information that was clearly available in system records.\n\nThe advisor over-probed, delayed resolution, or caused customer irritation.\n\nThe probing was poorly structured, unnecessary, or obstructed the conversation.\n\nAny such instance is considered fatal for this parameter.\n\nSteps\n\nIdentify the customer’s VOC from the conversation.\n\nReview every question asked by the advisor.\n\nCheck if each question was directly relevant to resolving that VOC.\n\nCheck if any question asked could have been answered from system data instead.\n\nIf most probing is relevant and correctly done → Score = 9.\n\nIf probing has minor inefficiencies → Score = 4.5.\n\nIf probing is largely unnecessary or irrelevant → Score = 0.",
+          "evaluation_category": "Partially Adhered",
+          "evaluation_score": 5,
+          "evaluation_reason": "The agent asked for the last 4 digits of the shipment ID and the order date, which are necessary to address the customer's concern about the stale order. However, the request for the shipment ID could be seen as redundant since the customer had already provided it later in the conversation. Overall, the probing was relevant but included some unnecessary repetition.",
+          "time_stamps": [
+            "1376311323",
+            "1376311326",
+            "1376311329"
+          ],
+          "byPassQaScore": false
+        }
+      ]
+    }
+  ],
+  "manual_qa_result": [],
+  "auto_qa_score": 0,
+  "qa_config_id": 800,
+  "usage_count": 11,
+  "usage": [
+    {
+      "prompt_tokens": 2881,
+      "completion_tokens": 587,
+      "total_tokens": 3468,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 3043,
+      "completion_tokens": 717,
+      "total_tokens": 3760,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 3122,
+      "completion_tokens": 795,
+      "total_tokens": 3917,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2508,
+      "completion_tokens": 464,
+      "total_tokens": 2972,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2755,
+      "completion_tokens": 737,
+      "total_tokens": 3492,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2848,
+      "completion_tokens": 853,
+      "total_tokens": 3701,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2473,
+      "completion_tokens": 396,
+      "total_tokens": 2869,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2836,
+      "completion_tokens": 805,
+      "total_tokens": 3641,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "prompt_tokens": 2939,
+      "completion_tokens": 924,
+      "total_tokens": 3863,
+      "model": "gpt-4o-mini"
+    },
+    {
+      "model": "gpt-4o-mini",
+      "prompt_tokens": 2094,
+      "completion_tokens": 11,
+      "total_tokens": 2105
+    },
+    {
+      "prompt_tokens": 7889,
+      "completion_tokens": 199,
+      "total_tokens": 8088,
+      "model": "gpt-4o-mini"
+    }
+  ],
+  "metadata": {
+    "QA_Ticket_Details": {
+      "Ticket_Assignment_Time": "2026-01-07 18:36:40",
+      "Ticket_Queue_Details": {
+        "queue_name": "Delivery Not Received",
+        "queue_id": "DNR_Q"
+      },
+      "Ticket_Creation_Time": "2025-08-26 09:38:17",
+      "Ticket_Updation_Time": "2026-01-07T13:07:33.376Z",
+      "Ticket_Disposition_Time": "2026-01-07T13:07:33.376Z",
+      "Shipment Id": "17561172200380553A-01",
+      "Status": "Delivered",
+      "Expected Delivery Date": "08/25/2025",
+      "Payment Mode": "PREPAID",
+      "product name": "Avocado Hass Each (Approx. 150 g - 180 g),",
+      "qty": "2",
+      "sellingprice": "158",
+      "orderId": "17561172200380553A-01",
+      "VoC": "The customer is complaining for F&V product issues- 1) Name of the product that has issues:Avocado Hass 2) Issue with the product: Defective",
+      "Can Return": "false",
+      "Can Cancel": "false",
+      "Vertical": "GROCERIES"
+    },
+    "QA_Ticket_Action": {
+      "Ticket_Disposition_Folder_Details": {
+        "current_folder": [
+          "Chat",
+          "GROCERIES",
+          "Complaint",
+          "Refunds"
+        ],
+        "previous_folders": [
+          "Chat",
+          "GROCERIES",
+          "Complaint",
+          "Refunds",
+          ""
+        ]
+      },
+      "Sub_Ticket_Created": {
+        "created": false,
+        "count": ""
+      },
+      "Dispose_Remark_Note": "test aq",
+      "Merge_Ticket": {
+        "merged": false,
+        "merged_with_ticket_id": ""
+      }
+    },
+    "system_fields": {
+      "initial_greeting_time": "true##-11609903"
+    },
+    "folderName": "Chat"
+  },
+  "kaptrace_id": "b17b8ef6-fce9-41cc-b21f-80062da44ce2###228687",
+  "rerun": false,
+  "ticket_assigned_date": "2025-08-26 09:38:17.0",
+  "ticket_resolved_date": "2026-01-07 18:37:33",
+  "queue_key": "DNR_Q",
+  "action_type": null,
+  "created_at": {
+    "$date": "2026-01-07T13:07:36.199Z"
+  },
+  "updated_at": {
+    "$date": "2026-01-07T13:08:30.109Z"
+  },
+  "agent_first_message_timestamp": {
+    "$date": "2025-08-26T09:38:17.000Z"
+  },
+  "auto_qa_result_summary": "The agent demonstrated strengths in timely responses and correct actions on customer tickets, effectively addressing the customer's issue regarding stale products and raising a refund request. However, critical areas for improvement were identified, particularly in the accurate sharing of complete information and proper documentation of complaints and inquiries. The agent failed to capture the specific Voice of Customer (VoC) in the remarks, which is essential for effective resolution. Additionally, the closing statement lacked engagement, potentially leading to customer confusion. Overall, while the agent showed competence in some areas, significant gaps in documentation and communication skills need to be addressed to enhance customer satisfaction.",
+  "qa_evaluation_result_summary_key_words": {
+    "timely responses": 1,
+    "refund request": 1,
+    "Voice of Customer": 1,
+    "documentation": 1,
+    "communication skills": 1,
+    "customer confusion": 1,
+    "areas for improvement": 1
+  },
+  "ticket_conversation": "agent (2025-08-26 09:38:17): Namaste! I am Abida Nazir from JioMart, how may I assist you today?  \ncustomer (2025-08-26 09:38:34): The last order i received is stale  \nagent (2025-08-26 09:39:01): It is understandable that you are very upset about what has happened. Please be rest assured, we always strive to create a positive customer experience.  \ncustomer (2025-08-26 09:39:15): Image Received  \ncustomer (2025-08-26 09:39:19): Image Received  \ncustomer (2025-08-26 09:39:31): Here are the pictures  \nagent (2025-08-26 09:39:35): As you have informed us that your concern is about that you had received a bad quality order  \ncustomer (2025-08-26 09:39:44): Yes  \nagent (2025-08-26 09:40:48): Can you please help us with the last 4 digits of your shipment id to check the further details?  \ncustomer (2025-08-26 09:41:18): How do I get that?  \ncustomer (2025-08-26 09:41:48): Are you able to see my last order?  \nagent (2025-08-26 09:43:09): Please confirm order date  \ncustomer (2025-08-26 09:43:20): August 25  \nagent (2025-08-26 09:44:10): Just to confirm, Is this the same shipment is 17561172200380553A-01 that you are enquiring about?  \ncustomer (2025-08-26 09:44:30): Yes I cannot check but this should be my last order  \ncustomer (2025-08-26 09:45:09): Id is  \ncustomer (2025-08-26 09:45:13): 17561172200380553A-01  \nagent (2025-08-26 09:46:21): Thankyou  \ncustomer (2025-08-26 09:46:28): Sure  \nagent (2025-08-26 09:46:48): Avocado Hass Each (Approx. 150 g - 180 g) both two quantities are stale  \ncustomer (2025-08-26 09:46:55): Yes  \nagent (2025-08-26 09:47:36): Please share complete images of product of two quantities both  \ncustomer (2025-08-26 09:48:00): These are two quantities  \ncustomer (2025-08-26 09:48:23): Both the image are for individual items  \nagent (2025-08-26 09:49:02): Yes please share  \ncustomer (2025-08-26 09:49:16): I have already shared the images  \ncustomer (2025-08-26 09:49:26): Image Received  \ncustomer (2025-08-26 09:49:29): Image Received  \ncustomer (2025-08-26 09:49:41): Shared again  \nagent (2025-08-26 09:51:33): Thankyou  \ncustomer (2025-08-26 09:51:53): Sure  \nagent (2025-08-26 09:53:14): We regret the inconvenience caused to you. We are raising a refund request against product Avocado Hass and the request number is 756181282595 . We will credit the refund amount of Rs 158 in your Jiomart Wallet by EOD of 28-August-2025  \ncustomer (2025-08-26 09:53:57): Is it possible to refund it in original payment method?  \ncustomer (2025-08-26 09:54:32): If not that is also ok but please confirm if it's possible or not  \nagent (2025-08-26 09:56:24): Sorry to interrupt, just to make sure, are we still connected?  \ncustomer (2025-08-26 09:56:43): Yes  \nagent (2025-08-26 09:57:54): I have not heard from you for a while, I will remain available for another 30 Secs if you need further assistance.  \ncustomer (2025-08-26 09:58:05): Are you serious  \ncustomer (2025-08-26 09:58:22): Im constantly messaging you  \ncustomer (2025-08-26 09:58:42): And you are saying you are not receiving a response  \nagent (2025-08-26 09:59:11): Since there was no response from your end, we have to close the session. If you need any further assistance, kindly get back to us between 08:00 AM to 08:00 PM, we will be happy to assist you.  \n",
+  "ticket_langauge": "hi"
+}

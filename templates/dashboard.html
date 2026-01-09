@@ -1,0 +1,443 @@
+<!DOCTYPE html>  <!-- HTML5 -->
+<html lang="en">  <!-- English -->
+<head>  <!-- Page info -->
+    <meta charset="UTF-8">  <!-- UTF-8 encoding -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  <!-- Mobile responsive -->
+    <title>Ticket Analytics Dashboard</title>  <!-- Tab title -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>  <!-- Charts library -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>  <!-- Bar labels plugin -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">  <!-- CSS file -->
+</head>
+<body>  <!-- Page content -->
+    <div class="bg-pattern"></div>  <!-- Animated background -->
+    
+    <div class="dashboard-container">  <!-- Main wrapper -->
+        <!-- Header -->
+        <header class="dashboard-header">  <!-- Top section -->
+            <div class="header-content">  <!-- Header wrapper -->
+                <div class="header-icon">📊</div>  <!-- Icon -->
+                <div class="header-text">  <!-- Text area -->
+                    <h1>Ticket Analytics Dashboard</h1>  <!-- Title -->
+                    <p>Real-time performance monitoring and insights</p>  <!-- Subtitle -->
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">  <!-- Stat cards container -->
+            <div class="stat-card completed">  <!-- Completed card -->
+                <div class="stat-icon">✓</div>  <!-- Check icon -->
+                <div class="stat-label">Completed Tickets</div>  <!-- Label -->
+                <div class="stat-value" id="statCompleted">0</div>  <!-- Number -->
+                <div class="stat-subtitle">Successfully resolved</div>  <!-- Description -->
+            </div>
+            
+            <div class="stat-card processing">  <!-- Processing card -->
+                <div class="stat-icon">⏳</div>  <!-- Timer icon -->
+                <div class="stat-label">Processing Tickets</div>  <!-- Label -->
+                <div class="stat-value" id="statProcessing">0</div>  <!-- Number -->
+                <div class="stat-subtitle">Currently in progress</div>  <!-- Description -->
+            </div>
+            
+            <div class="stat-card failed">  <!-- Failed card -->
+                <div class="stat-icon">✕</div>  <!-- X icon -->
+                <div class="stat-label">Failed Tickets</div>  <!-- Label -->
+                <div class="stat-value" id="statFailed">0</div>  <!-- Number -->
+                <div class="stat-subtitle">Requires attention</div>  <!-- Description -->
+            </div>
+            
+            <div class="stat-card callback">  <!-- Callback card -->
+                <div class="stat-icon">📞</div>  <!-- Phone icon -->
+                <div class="stat-label">Callback Required</div>  <!-- Label -->
+                <div class="stat-value" id="statCallback">0</div>  <!-- Number -->
+                <div class="stat-subtitle">Awaiting callback</div>  <!-- Description -->
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">  <!-- Controls section -->
+            <div class="control-grid">  <!-- Grid layout -->
+                <div class="control-group">  <!-- Date picker -->
+                    <label class="control-label">📅 Select Date</label>  <!-- Label -->
+                    <input type="date" id="datePicker" class="date-input">  <!-- Date input -->
+                </div>
+                
+                <div class="control-group">  <!-- Auto refresh -->
+                    <label class="control-label">🔄 Auto Refresh</label>  <!-- Label -->
+                    <div class="refresh-toggle">  <!-- Toggle wrapper -->
+                        <label>  <!-- Checkbox label -->
+                            <input type="checkbox" id="autoRefresh" class="checkbox-custom" onchange="toggleAutoRefresh()">  <!-- Checkbox -->
+                            <span>Every</span>  <!-- Text -->
+                        </label>
+                        <input type="number" id="refreshInterval" value="30" min="5" max="300" class="refresh-input">  <!-- Interval -->
+                        <span style="color: #374151; font-size: 15px; font-weight: 600;">sec</span>  <!-- Unit -->
+                    </div>
+                </div>
+                
+                <div class="btn-group">  <!-- Buttons -->
+                    <button onclick="loadAvailableDates()" class="btn btn-secondary">  <!-- Dates button -->
+                        📋 Dates
+                    </button>
+                    <button onclick="reloadData()" class="btn btn-primary">  <!-- Reload button -->
+                        🔄 Reload
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date Banner -->
+        <div id="dateBanner" class="date-banner">  <!-- Selected date display -->
+            <span class="date-banner-icon">📅</span>  <!-- Icon -->
+            <span class="date-banner-text" id="dateBannerText"></span>  <!-- Date text -->
+        </div>
+
+        <!-- No Data -->
+        <div id="noData" class="no-data">  <!-- Empty state -->
+            <div class="no-data-icon">📊</div>  <!-- Icon -->
+            <div class="no-data-text">No data available for the selected date</div>  <!-- Message -->
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-section">  <!-- Charts grid -->
+            <div class="chart-card completed">  <!-- Completed chart -->
+                <div class="chart-header">  <!-- Chart title area -->
+                    <div class="chart-icon">✓</div>  <!-- Icon -->
+                    <h2 class="chart-title">Completed Tickets</h2>  <!-- Title -->
+                </div>
+                <div class="chart-canvas-wrapper">  <!-- Canvas wrapper -->
+                    <canvas id="completedChart"></canvas>  <!-- Chart -->
+                </div>
+            </div>
+            
+            <div class="chart-card processing">  <!-- Processing chart -->
+                <div class="chart-header">  <!-- Chart title area -->
+                    <div class="chart-icon">⏳</div>  <!-- Icon -->
+                    <h2 class="chart-title">Processing Tickets</h2>  <!-- Title -->
+                </div>
+                <div class="chart-canvas-wrapper">  <!-- Canvas wrapper -->
+                    <canvas id="processingChart"></canvas>  <!-- Chart -->
+                </div>
+            </div>
+            
+            <div class="chart-card failed">  <!-- Failed chart -->
+                <div class="chart-header">  <!-- Chart title area -->
+                    <div class="chart-icon">✕</div>  <!-- Icon -->
+                    <h2 class="chart-title">Failed Tickets</h2>  <!-- Title -->
+                </div>
+                <div class="chart-canvas-wrapper">  <!-- Canvas wrapper -->
+                    <canvas id="failedChart"></canvas>  <!-- Chart -->
+                </div>
+            </div>
+            
+            <div class="chart-card callback">  <!-- Callback chart -->
+                <div class="chart-header">  <!-- Chart title area -->
+                    <div class="chart-icon">📞</div>  <!-- Icon -->
+                    <h2 class="chart-title">Callback Required</h2>  <!-- Title -->
+                </div>
+                <div class="chart-canvas-wrapper">  <!-- Canvas wrapper -->
+                    <canvas id="callbackChart"></canvas>  <!-- Chart -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>  <!-- JavaScript -->
+        let completedChart, processingChart, failedChart, callbackChart;  // Chart instances
+        let autoRefreshInterval = null;  // Refresh timer
+        let currentDate = null;  // Selected date
+        let animationTimers = {};  // Animation trackers
+
+        function initializeDatePicker() {  // Setup date picker
+            const today = new Date().toISOString().split('T')[0];  // Get today
+            document.getElementById('datePicker').value = today;  // Set it
+            currentDate = today;  // Store it
+        }
+
+        async function fetchData(date) {  // Get data from API
+            const url = date ? `/api/ticket-data?date=${date}` : '/api/ticket-data';  // Build URL
+            const response = await fetch(url);  // Call API
+            return await response.json();  // Parse JSON
+        }
+
+        function updateStats(data) {  // Update stat cards
+            const totalCompleted = data.completed.reduce((a, b) => a + b, 0);  // Sum completed
+            const totalProcessing = data.processing.reduce((a, b) => a + b, 0);  // Sum processing
+            const totalFailed = data.failed.reduce((a, b) => a + b, 0);  // Sum failed
+            const totalCallback = data.callback.reduce((a, b) => a + b, 0);  // Sum callback
+
+            animateValue('statCompleted', totalCompleted);  // Animate completed
+            animateValue('statProcessing', totalProcessing);  // Animate processing
+            animateValue('statFailed', totalFailed);  // Animate failed
+            animateValue('statCallback', totalCallback);  // Animate callback
+        }
+
+        function animateValue(id, targetValue) {  // Animate number changes
+            const element = document.getElementById(id);  // Get element
+            
+            if (animationTimers[id]) {  // Already animating?
+                clearInterval(animationTimers[id]);  // Stop it
+                delete animationTimers[id];  // Remove
+            }
+            
+            const currentValue = parseInt(element.textContent) || 0;  // Current number
+            
+            if (currentValue === targetValue) {  // Same value?
+                element.textContent = targetValue;  // Just set it
+                return;  // Done
+            }
+            
+            const duration = 800;  // How long
+            const steps = 40;  // How many steps
+            const stepDuration = duration / steps;  // Time per step
+            const valueChange = targetValue - currentValue;  // Total change
+            const stepValue = valueChange / steps;  // Change per step
+            
+            let currentStep = 0;  // Start counting
+            
+            animationTimers[id] = setInterval(() => {  // Run animation
+                currentStep++;  // Next step
+                
+                if (currentStep >= steps) {  // Done?
+                    element.textContent = targetValue;  // Set final
+                    clearInterval(animationTimers[id]);  // Stop
+                    delete animationTimers[id];  // Clean up
+                } else {  // Keep going
+                    const newValue = Math.round(currentValue + (stepValue * currentStep));  // Calculate
+                    element.textContent = newValue;  // Update
+                }
+            }, stepDuration);  // Every step
+        }
+
+        function showToast(message, type = 'success') {  // Show notification
+            const toast = document.createElement('div');  // Create element
+            toast.className = `toast ${type}`;  // Set class
+            toast.textContent = message;  // Set message
+            document.body.appendChild(toast);  // Add to page
+            
+            setTimeout(() => {  // Wait 3 seconds
+                toast.style.animation = 'slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) reverse';  // Slide out
+                setTimeout(() => toast.remove(), 400);  // Remove
+            }, 3000);
+        }
+
+        async function loadAvailableDates() {  // Show available dates
+            const response = await fetch('/api/available-dates');  // Get dates
+            const data = await response.json();  // Parse
+            
+            if (data.dates.length > 0) {  // Got dates?
+                alert('📅 Available dates with data:\n\n' + data.dates.join('\n'));  // Show them
+            } else {  // Nothing
+                showToast('No dates available');  // Tell user
+            }
+        }
+
+        function createCharts(data) {  // Build/update charts
+            const noData = document.getElementById('noData');  // Get no data message
+            const chartsSection = document.querySelector('.charts-section');  // Get charts area
+            const dateBanner = document.getElementById('dateBanner');  // Get banner
+            
+            if (data.client_ids.length === 0) {  // No data?
+                noData.style.display = 'block';  // Show message
+                chartsSection.style.display = 'none';  // Hide charts
+                dateBanner.style.display = 'none';  // Hide banner
+                updateStats({completed: [0], processing: [0], failed: [0], callback: [0], client_ids: []});  // Zero stats
+                return;  // Done
+            }
+            
+            noData.style.display = 'none';  // Hide message
+            chartsSection.style.display = 'grid';  // Show charts
+            dateBanner.style.display = 'flex';  // Show banner
+            updateStats(data);  // Update stats
+
+            const displayDate = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {  // Format date
+                weekday: 'long',  // Full day name
+                year: 'numeric',  // Year
+                month: 'long',  // Full month
+                day: 'numeric'  // Day number
+            });
+            document.getElementById('dateBannerText').textContent = `Showing data for ${displayDate}`;  // Show date
+
+            if (completedChart) completedChart.destroy();  // Clear old chart
+            if (processingChart) processingChart.destroy();  // Clear old chart
+            if (failedChart) failedChart.destroy();  // Clear old chart
+            if (callbackChart) callbackChart.destroy();  // Clear old chart
+
+            const chartConfig = {  // Chart settings
+                responsive: true,  // Fit container
+                maintainAspectRatio: false,  // Allow height change
+                layout: {  // Spacing
+                    padding: {  // Padding values
+                        top: 35,  // Space for labels
+                        bottom: 10,
+                        left: 10,
+                        right: 10
+                    }
+                },
+                plugins: {  // Plugin options
+                    legend: { display: false },  // No legend
+                    tooltip: {  // Hover tooltips
+                        backgroundColor: '#111827',  // Dark bg
+                        padding: 16,  // Inner spacing
+                        titleFont: { size: 15, weight: 'bold', family: 'Inter' },  // Title font
+                        bodyFont: { size: 14, family: 'Inter' },  // Body font
+                        cornerRadius: 12,  // Rounded
+                        displayColors: false,  // No color box
+                        callbacks: {  // Custom format
+                            label: (context) => `${context.parsed.y} tickets`  // Show count
+                        }
+                    },
+                    datalabels: {  // Bar labels
+                        anchor: 'end',  // At bar top
+                        align: 'end',  // Aligned to end
+                        offset: -5,  // Nudge up
+                        formatter: (value) => {  // Format text
+                            return value > 0 ? value : '';  // Only show if > 0
+                        },
+                        font: {  // Label font
+                            weight: 'bold',
+                            size: 14,
+                            family: 'Inter'
+                        },
+                        color: '#111827'  // Dark color
+                    }
+                },
+                scales: {  // Axis settings
+                    y: {  // Y axis
+                        beginAtZero: true,  // Start at 0
+                        grace: '5%',  // Extra space at top
+                        ticks: {  // Tick marks
+                            stepSize: 1,  // Increment by 1
+                            font: { size: 12, family: 'Inter', weight: '600' },
+                            color: '#6b7280'
+                        },
+                        grid: {  // Grid lines
+                            color: '#f3f4f6',
+                            drawBorder: false
+                        },
+                        border: { display: false }
+                    },
+                    x: {  // X axis
+                        ticks: {  // Tick marks
+                            font: { size: 12, family: 'Inter', weight: '700' },
+                            color: '#111827'
+                        },
+                        grid: { display: false },  // No grid
+                        border: { display: false }
+                    }
+                }
+            };
+
+            const ctx1 = document.getElementById('completedChart').getContext('2d');  // Get canvas
+            completedChart = new Chart(ctx1, {  // Create chart
+                type: 'bar',  // Bar chart
+                data: {  // Chart data
+                    labels: data.client_ids,  // X labels
+                    datasets: [{  // Data
+                        data: data.completed,  // Values
+                        backgroundColor: '#10b981',  // Green
+                        borderRadius: 10,  // Rounded bars
+                        hoverBackgroundColor: '#059669'  // Darker on hover
+                    }]
+                },
+                options: chartConfig,  // Use config
+                plugins: [ChartDataLabels]  // Enable labels
+            });
+
+            const ctx2 = document.getElementById('processingChart').getContext('2d');  // Get canvas
+            processingChart = new Chart(ctx2, {  // Create chart
+                type: 'bar',
+                data: {
+                    labels: data.client_ids,
+                    datasets: [{
+                        data: data.processing,
+                        backgroundColor: '#f59e0b',  // Orange
+                        borderRadius: 10,
+                        hoverBackgroundColor: '#d97706'
+                    }]
+                },
+                options: chartConfig,
+                plugins: [ChartDataLabels]
+            });
+
+            const ctx3 = document.getElementById('failedChart').getContext('2d');  // Get canvas
+            failedChart = new Chart(ctx3, {  // Create chart
+                type: 'bar',
+                data: {
+                    labels: data.client_ids,
+                    datasets: [{
+                        data: data.failed,
+                        backgroundColor: '#dc2626',  // Red
+                        borderRadius: 10,
+                        hoverBackgroundColor: '#b91c1c'
+                    }]
+                },
+                options: chartConfig,
+                plugins: [ChartDataLabels]
+            });
+
+            const ctx4 = document.getElementById('callbackChart').getContext('2d');  // Get canvas
+            callbackChart = new Chart(ctx4, {  // Create chart
+                type: 'bar',
+                data: {
+                    labels: data.client_ids,
+                    datasets: [{
+                        data: data.callback,
+                        backgroundColor: '#8b5cf6',  // Purple
+                        borderRadius: 10,
+                        hoverBackgroundColor: '#7c3aed'
+                    }]
+                },
+                options: chartConfig,
+                plugins: [ChartDataLabels]
+            });
+        }
+
+        async function updateDashboard() {  // Refresh everything
+            const selectedDate = document.getElementById('datePicker').value;  // Get date
+            currentDate = selectedDate;  // Save it
+            const data = await fetchData(selectedDate);  // Fetch data
+            createCharts(data);  // Update charts
+        }
+
+        function toggleAutoRefresh() {  // Turn auto-refresh on/off
+            const checkbox = document.getElementById('autoRefresh');  // Get checkbox
+            const intervalInput = document.getElementById('refreshInterval');  // Get interval
+            
+            if (checkbox.checked) {  // Turning on?
+                const seconds = parseInt(intervalInput.value);  // Get seconds
+                autoRefreshInterval = setInterval(updateDashboard, seconds * 1000);  // Start timer
+                intervalInput.disabled = true;  // Lock input
+                showToast(`✓ Auto-refresh enabled (${seconds}s)`);  // Notify
+            } else {  // Turning off
+                if (autoRefreshInterval) {  // Timer exists?
+                    clearInterval(autoRefreshInterval);  // Stop it
+                    autoRefreshInterval = null;  // Clear it
+                }
+                intervalInput.disabled = false;  // Unlock input
+                showToast('Auto-refresh disabled');  // Notify
+            }
+        }
+
+        async function reloadData() {  // Manual refresh
+            const btn = event.target.closest('button');  // Get button
+            const originalHTML = btn.innerHTML;  // Save text
+            btn.innerHTML = '<span class="loading"></span> Loading...';  // Show loading
+            btn.disabled = true;  // Disable
+            
+            await fetch('/reload-data');  // Hit reload API
+            await updateDashboard();  // Refresh
+            
+            btn.innerHTML = originalHTML;  // Restore text
+            btn.disabled = false;  // Enable
+            showToast('✓ Data reloaded successfully!');  // Notify
+        }
+
+        document.getElementById('datePicker').addEventListener('change', updateDashboard);  // Watch date changes
+
+        window.onload = async function() {  // On page load
+            initializeDatePicker();  // Setup date
+            await updateDashboard();  // Load data
+        };
+    </script>
+</body>
+</html>

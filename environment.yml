@@ -1,0 +1,10 @@
+name: ticket-dashboard
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - flask=3.0.0
+  - pip
+  - pip:
+    - pymongo==4.6.1
