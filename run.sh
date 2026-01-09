@@ -11,12 +11,6 @@ if ! pgrep -x "mongod" > /dev/null; then
     sleep 3
 fi
 
-# Check if clients_data.json exists
-if [ ! -f "clients_data.json" ]; then
-    echo "Error: clients_data.json not found!"
-    echo "Please place your JSON file in the current directory."
-    exit 1
-fi
 
 # Run Flask app
 echo "Starting Flask dashboard..."
