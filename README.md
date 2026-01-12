@@ -14,8 +14,8 @@ A Flask-based dashboard that visualizes client ticket statistics (completed, pro
 ## Prerequisites
 
 - Miniconda or Anaconda installed
-- MongoDB installed locally (without root access)
-- Your `clients_data.json` file
+- MongoDB installed locally.
+- Your dataset
 
 ## Quick Start
 
