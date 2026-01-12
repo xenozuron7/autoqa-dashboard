@@ -5,7 +5,8 @@ A Flask-based dashboard that visualizes client ticket statistics (completed, pro
 ## Features
 
 - **Date-sensitive filtering**: Select any date to view ticket statistics
-- **Three separate bar graphs**: Completed, processing, and failed tickets
+- **Separate bar graphs**: Completed, processing, failed and callback-needed tickets
+- **Client-based filtering**: Select a client to show their ticket information.
 - **Auto-refresh functionality**: Configurable automatic data updates
 - **MongoDB integration**: Efficient data storage and retrieval
 - **Real-time updates**: Charts update instantly when date changes
@@ -14,12 +15,10 @@ A Flask-based dashboard that visualizes client ticket statistics (completed, pro
 ## Prerequisites
 
 - Miniconda or Anaconda installed
-- MongoDB installed locally (without root access)
-- Your `clients_data.json` file
+- MongoDB installed locally.
+- Your dataset.(Can be MongoDB Atlas or locally provided dataset)
 
 ## Quick Start
-
-### 1. Setup Environment
 
 ```bash
 # Make setup script executable
@@ -27,3 +26,9 @@ chmod +x setup.sh
 
 # Run setup
 ./setup.sh
+
+#Make the run script executable
+chmod +x run.sh
+
+#Run the script
+./run.sh
