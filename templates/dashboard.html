@@ -1,288 +1,313 @@
-<!DOCTYPE html>  <!-- html5 document type -->
-<html lang="en">  <!-- english language -->
-<head>  <!-- document metadata -->
-    <meta charset="UTF-8">  <!-- utf-8 character encoding -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">  <!-- responsive viewport -->
-    <title>Ticket Analytics Dashboard</title>  <!-- page title -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>  <!-- chart.js library -->
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>  <!-- datalabels plugin -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">  <!-- link to css file -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>  <!-- page content -->
-    <div class="bg-pattern"></div>  <!-- animated background pattern -->
+<body>
+    <div class="bg-pattern"></div>
     
-    <div class="dashboard-container">  <!-- main container -->
+    <div class="dashboard-container">
         
         <!-- Header -->
-        <header class="dashboard-header">  <!-- top header section -->
-            <div class="header-content">  <!-- header content wrapper -->
-                <div class="header-icon">📊</div>  <!-- decorative icon with chart emoji -->
-                <div class="header-text">  <!-- header text area -->
-                    <h1>Ticket Analytics Dashboard</h1>  <!-- main title -->
-                    <p>Real-time performance monitoring and insights</p>  <!-- subtitle -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="header-icon">📊</div>
+                <div class="header-text">
+                    <h1>Ticket Analytics Dashboard</h1>
+                    <p>Real-time performance monitoring and insights</p>
                 </div>
             </div>
         </header>
 
         <!-- Tab Navigation -->
-        <div class="tab-navigation">  <!-- tab buttons container -->
-            <button class="tab-btn active" onclick="switchTab('overview')" id="overviewTab">Overview Dashboard</button>  <!-- overview tab button -->
-            <button class="tab-btn" onclick="switchTab('client')" id="clientTab">Client Dashboard</button>  <!-- client tab button -->
+        <div class="tab-navigation">
+            <button class="tab-btn active" onclick="switchTab('overview')" id="overviewTab">Overview Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('client')" id="clientTab">Client Dashboard</button>
         </div>
 
         <!-- Overview Dashboard Tab -->
-        <div id="overviewContent" class="tab-content active">  <!-- overview tab content -->
+        <div id="overviewContent" class="tab-content active">
             
             <!-- Stats Grid -->
-            <div class="stats-grid">  <!-- statistics cards container -->
-                <div class="stat-card completed" onclick="openTicketModal('completed')">  <!-- completed tickets card with click handler -->
-                    <div class="stat-icon">✓</div>  <!-- card icon with checkmark -->
-                    <div class="stat-label">Completed Tickets</div>  <!-- card label -->
-                    <div class="stat-value" id="statCompleted">0</div>  <!-- card value -->
-                    <div class="stat-subtitle">Successfully resolved</div>  <!-- card description -->
+            <div class="stats-grid">
+                <div class="stat-card completed" onclick="openTicketModal('completed')">
+                    <div class="stat-icon">✓</div>
+                    <div class="stat-label">Completed Tickets</div>
+                    <div class="stat-value" id="statCompleted">0</div>
+                    <div class="stat-subtitle">Successfully resolved</div>
                 </div>
                 
-                <div class="stat-card processing" onclick="openTicketModal('processing')">  <!-- processing tickets card with click handler -->
-                    <div class="stat-icon">⏳</div>  <!-- card icon with hourglass -->
-                    <div class="stat-label">Processing Tickets</div>  <!-- card label -->
-                    <div class="stat-value" id="statProcessing">0</div>  <!-- card value -->
-                    <div class="stat-subtitle">Currently in progress</div>  <!-- card description -->
+                <div class="stat-card processing" onclick="openTicketModal('processing')">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-label">Processing Tickets</div>
+                    <div class="stat-value" id="statProcessing">0</div>
+                    <div class="stat-subtitle">Currently in progress</div>
                 </div>
                 
-                <div class="stat-card failed" onclick="openTicketModal('failed')">  <!-- failed tickets card with click handler -->
-                    <div class="stat-icon">✗</div>  <!-- card icon with x mark -->
-                    <div class="stat-label">Failed Tickets</div>  <!-- card label -->
-                    <div class="stat-value" id="statFailed">0</div>  <!-- card value -->
-                    <div class="stat-subtitle">Requires attention</div>  <!-- card description -->
+                <div class="stat-card failed" onclick="openTicketModal('failed')">
+                    <div class="stat-icon">✗</div>
+                    <div class="stat-label">Failed Tickets</div>
+                    <div class="stat-value" id="statFailed">0</div>
+                    <div class="stat-subtitle">Requires attention</div>
                 </div>
                 
-                <div class="stat-card callback" onclick="openTicketModal('callback')">  <!-- callback tickets card with click handler -->
-                    <div class="stat-icon">📞</div>  <!-- card icon with phone -->
-                    <div class="stat-label">Callback Required</div>  <!-- card label -->
-                    <div class="stat-value" id="statCallback">0</div>  <!-- card value -->
-                    <div class="stat-subtitle">Awaiting callback</div>  <!-- card description -->
+                <div class="stat-card callback" onclick="openTicketModal('callback')">
+                    <div class="stat-icon">📞</div>
+                    <div class="stat-label">Callback Required</div>
+                    <div class="stat-value" id="statCallback">0</div>
+                    <div class="stat-subtitle">Awaiting callback</div>
                 </div>
             </div>
 
             <!-- Control Panel -->
-            <div class="control-panel">  <!-- controls section -->
-                <div class="control-strip">  <!-- single horizontal strip for all controls -->
+            <div class="control-panel">
+                <div class="control-strip">
                     
                     <!-- Date Picker -->
-                    <div class="control-group">  <!-- date picker group -->
-                        <label class="control-label">Select Date</label>  <!-- date label -->
-                        <input type="date" id="datePicker" class="date-input">  <!-- date input field -->
+                    <div class="control-group">
+                        <label class="control-label">Select Date</label>
+                        <input type="date" id="datePicker" class="date-input">
                     </div>
 
                     <!-- Auto Refresh -->
-                    <div class="control-group">  <!-- auto refresh group -->
-                        <label class="control-label">Auto Refresh</label>  <!-- refresh label -->
-                        <div class="refresh-toggle">  <!-- refresh toggle container -->
-                            <label>  <!-- checkbox label -->
-                                <input type="checkbox" id="autoRefresh" class="checkbox-custom" onchange="toggleAutoRefresh()">  <!-- auto refresh checkbox -->
-                                <span>Every</span>  <!-- text before interval -->
+                    <div class="control-group">
+                        <label class="control-label">Auto Refresh</label>
+                        <div class="refresh-toggle">
+                            <label>
+                                <input type="checkbox" id="autoRefresh" class="checkbox-custom" onchange="toggleAutoRefresh()">
+                                <span>Every</span>
                             </label>
-                            <input type="number" id="refreshInterval" value="30" min="5" max="300" class="refresh-input">  <!-- refresh interval input -->
-                            <span style="color: #374151; font-size: 15px; font-weight: 600;">sec</span>  <!-- seconds unit -->
+                            <input type="number" id="refreshInterval" value="30" min="5" max="300" class="refresh-input">
+                            <span style="color: #374151; font-size: 15px; font-weight: 600;">sec</span>
                         </div>
                     </div>
 
                     <!-- Action Button -->
-                    <div class="control-group">  <!-- button group -->
-                        <label class="control-label">&nbsp;</label>  <!-- empty label for alignment -->
-                        <button onclick="reloadData()" class="btn btn-primary">Reload</button>  <!-- reload data button -->
+                    <div class="control-group">
+                        <label class="control-label">&nbsp;</label>
+                        <button onclick="reloadData()" class="btn btn-primary">Reload</button>
                     </div>
                     
                 </div>
             </div>
 
             <!-- Date Banner -->
-            <div id="dateBanner" class="date-banner">  <!-- selected date display banner -->
-                <span class="date-banner-icon">📅</span>  <!-- calendar icon -->
-                <span class="date-banner-text" id="dateBannerText"></span>  <!-- date text -->
+            <div id="dateBanner" class="date-banner">
+                <span class="date-banner-icon">📅</span>
+                <span class="date-banner-text" id="dateBannerText"></span>
             </div>
 
             <!-- No Data Message -->
-            <div id="noData" class="no-data" style="display: none;">  <!-- no data state -->
-                <div class="no-data-icon">📊</div>  <!-- empty state icon -->
-                <div class="no-data-text">No data available for the selected date</div>  <!-- empty state message -->
+            <div id="noData" class="no-data" style="display: none;">
+                <div class="no-data-icon">📊</div>
+                <div class="no-data-text">No data available for the selected date</div>
             </div>
 
             <!-- Charts Section -->
-            <div class="charts-section">  <!-- charts grid container -->
+            <div class="charts-section">
                 
                 <!-- Completed Chart -->
-                <div class="chart-card completed">  <!-- completed tickets chart card -->
-                    <div class="chart-header">  <!-- chart header -->
-                        <div class="chart-icon">✓</div>  <!-- chart icon -->
-                        <h2 class="chart-title">Completed Tickets</h2>  <!-- chart title -->
+                <div class="chart-card completed">
+                    <div class="chart-header">
+                        <div class="chart-icon">✓</div>
+                        <h2 class="chart-title">Completed Tickets</h2>
                     </div>
-                    <div class="chart-canvas-wrapper">  <!-- chart canvas wrapper -->
-                        <canvas id="completedChart"></canvas>  <!-- chart canvas element -->
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="completedChart"></canvas>
                     </div>
                 </div>
 
                 <!-- Processing Chart -->
-                <div class="chart-card processing">  <!-- processing tickets chart card -->
-                    <div class="chart-header">  <!-- chart header -->
-                        <div class="chart-icon">⏳</div>  <!-- chart icon -->
-                        <h2 class="chart-title">Processing Tickets</h2>  <!-- chart title -->
+                <div class="chart-card processing">
+                    <div class="chart-header">
+                        <div class="chart-icon">⏳</div>
+                        <h2 class="chart-title">Processing Tickets</h2>
                     </div>
-                    <div class="chart-canvas-wrapper">  <!-- chart canvas wrapper -->
-                        <canvas id="processingChart"></canvas>  <!-- chart canvas element -->
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="processingChart"></canvas>
                     </div>
                 </div>
 
                 <!-- Failed Chart -->
-                <div class="chart-card failed">  <!-- failed tickets chart card -->
-                    <div class="chart-header">  <!-- chart header -->
-                        <div class="chart-icon">✗</div>  <!-- chart icon -->
-                        <h2 class="chart-title">Failed Tickets</h2>  <!-- chart title -->
+                <div class="chart-card failed">
+                    <div class="chart-header">
+                        <div class="chart-icon">✗</div>
+                        <h2 class="chart-title">Failed Tickets</h2>
                     </div>
-                    <div class="chart-canvas-wrapper">  <!-- chart canvas wrapper -->
-                        <canvas id="failedChart"></canvas>  <!-- chart canvas element -->
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="failedChart"></canvas>
                     </div>
                 </div>
 
                 <!-- Callback Chart -->
-                <div class="chart-card callback">  <!-- callback tickets chart card -->
-                    <div class="chart-header">  <!-- chart header -->
-                        <div class="chart-icon">📞</div>  <!-- chart icon -->
-                        <h2 class="chart-title">Callback Required</h2>  <!-- chart title -->
+                <div class="chart-card callback">
+                    <div class="chart-header">
+                        <div class="chart-icon">📞</div>
+                        <h2 class="chart-title">Callback Required</h2>
                     </div>
-                    <div class="chart-canvas-wrapper">  <!-- chart canvas wrapper -->
-                        <canvas id="callbackChart"></canvas>  <!-- chart canvas element -->
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="callbackChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Client Dashboard Tab -->
-        <div id="clientContent" class="tab-content">  <!-- client tab content -->
+        <div id="clientContent" class="tab-content">
             
             <!-- Client Selector -->
-            <div class="client-selector">  <!-- client selection dropdown -->
-                <label for="clientSelect">Select Client ID:</label>  <!-- dropdown label -->
-                <select id="clientSelect" onchange="loadClientData()">  <!-- client dropdown -->
-                    <option value="">-- Select a Client --</option>  <!-- default option -->
+            <div class="client-selector">
+                <label for="clientSelect">Select Client ID:</label>
+                <select id="clientSelect" onchange="loadClientData()">
+                    <option value="">-- Select a Client --</option>
                 </select>
             </div>
 
             <!-- Client Stats -->
-            <div id="clientStats" class="stats-grid" style="display: none;">  <!-- client statistics grid -->
-                <div class="stat-card completed">  <!-- completed stat card -->
-                    <div class="stat-icon">✓</div>  <!-- stat icon with checkmark -->
-                    <div class="stat-label">Completed Tickets</div>  <!-- stat label -->
-                    <div class="stat-value" id="clientCompleted">0</div>  <!-- stat value -->
+            <div id="clientStats" class="stats-grid" style="display: none;">
+                <div class="stat-card completed">
+                    <div class="stat-icon">✓</div>
+                    <div class="stat-label">Completed Tickets (All Time)</div>
+                    <div class="stat-value" id="clientCompleted">0</div>
                 </div>
-                <div class="stat-card processing">  <!-- processing stat card -->
-                    <div class="stat-icon">⏳</div>  <!-- stat icon with hourglass -->
-                    <div class="stat-label">Processing Tickets</div>  <!-- stat label -->
-                    <div class="stat-value" id="clientProcessing">0</div>  <!-- stat value -->
+                <div class="stat-card processing">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-label">Processing Tickets (All Time)</div>
+                    <div class="stat-value" id="clientProcessing">0</div>
                 </div>
-                <div class="stat-card failed">  <!-- failed stat card -->
-                    <div class="stat-icon">✗</div>  <!-- stat icon with x mark -->
-                    <div class="stat-label">Failed Tickets</div>  <!-- stat label -->
-                    <div class="stat-value" id="clientFailed">0</div>  <!-- stat value -->
+                <div class="stat-card failed">
+                    <div class="stat-icon">✗</div>
+                    <div class="stat-label">Failed Tickets (All Time)</div>
+                    <div class="stat-value" id="clientFailed">0</div>
                 </div>
-                <div class="stat-card callback">  <!-- callback stat card -->
-                    <div class="stat-icon">📞</div>  <!-- stat icon with phone -->
-                    <div class="stat-label">Callback Required</div>  <!-- stat label -->
-                    <div class="stat-value" id="clientCallback">0</div>  <!-- stat value -->
+                <div class="stat-card callback">
+                    <div class="stat-icon">📞</div>
+                    <div class="stat-label">Callback Required (All Time)</div>
+                    <div class="stat-value" id="clientCallback">0</div>
                 </div>
             </div>
 
-            <!-- Tickets Table -->
-            <div id="clientTicketsTable" class="tickets-table" style="display: none;">  <!-- tickets table container -->
-                <h3>Ticket History</h3>  <!-- table heading -->
-                <table>  <!-- data table -->
-                    <thead>  <!-- table header -->
-                        <tr>  <!-- header row -->
-                            <th>Ticket ID</th>  <!-- ticket id column -->
-                            <th>Status</th>  <!-- status column -->
-                            <th>Created At</th>  <!-- created date column -->
-                            <th>Auto QA Status</th>  <!-- auto qa status column -->
-                            <th>Request Status</th>  <!-- request status column -->
-                        </tr>
-                    </thead>
-                    <tbody id="ticketsTableBody">  <!-- table body for data rows -->
-                        <!-- tickets will be populated here -->
-                    </tbody>
-                </table>
+            <!-- Client Charts Section -->
+            <div id="clientChartsSection" class="charts-section" style="display: none;">
+                
+                <!-- Completed Chart -->
+                <div class="chart-card completed">
+                    <div class="chart-header">
+                        <div class="chart-icon">✓</div>
+                        <h2 class="chart-title">Completed Tickets (Past 7 Days)</h2>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="clientCompletedChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Processing Chart -->
+                <div class="chart-card processing">
+                    <div class="chart-header">
+                        <div class="chart-icon">⏳</div>
+                        <h2 class="chart-title">Processing Tickets (Past 7 Days)</h2>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="clientProcessingChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Failed Chart -->
+                <div class="chart-card failed">
+                    <div class="chart-header">
+                        <div class="chart-icon">✗</div>
+                        <h2 class="chart-title">Failed Tickets (Past 7 Days)</h2>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="clientFailedChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Callback Chart -->
+                <div class="chart-card callback">
+                    <div class="chart-header">
+                        <div class="chart-icon">📞</div>
+                        <h2 class="chart-title">Callback Required (Past 7 Days)</h2>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="clientCallbackChart"></canvas>
+                    </div>
+                </div>
             </div>
 
             <!-- No Data Message -->
-            <div id="noClientData" class="no-data" style="display: none;">  <!-- no client data state -->
-                <div class="no-data-icon">📊</div>  <!-- empty state icon -->
-                <div class="no-data-text">No tickets found for this client</div>  <!-- empty state message -->
+            <div id="noClientData" class="no-data" style="display: none;">
+                <div class="no-data-icon">📊</div>
+                <div class="no-data-text">No tickets found for this client</div>
             </div>
         </div>
 
     </div>
 
     <!-- Ticket Modal -->
-    <div id="ticketModal" class="modal">  <!-- modal overlay -->
-        <div class="modal-content">  <!-- modal window -->
-            <div class="modal-header">  <!-- modal header section -->
-                <h2 id="modalTitle">Tickets</h2>  <!-- modal title -->
-                <span class="modal-close" onclick="closeTicketModal()">&times;</span>  <!-- close button -->
+    <div id="ticketModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Tickets</h2>
+                <span class="modal-close" onclick="closeTicketModal()">&times;</span>
             </div>
-            <div class="modal-body">  <!-- modal body section -->
-                <div id="modalTicketsTable" class="tickets-table">  <!-- tickets table in modal -->
-                    <table>  <!-- data table -->
-                        <thead>  <!-- table header -->
-                            <tr>  <!-- header row -->
-                                <th>Ticket ID</th>  <!-- ticket id column -->
-                                <th>Client ID</th>  <!-- client id column -->
-                                <th>Status</th>  <!-- status column -->
-                                <th>Created At</th>  <!-- created date column -->
-                                <th>Auto QA Status</th>  <!-- auto qa status column -->
-                                <th>Request Status</th>  <!-- request status column -->
+            <div class="modal-body">
+                <div id="modalTicketsTable" class="tickets-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ticket ID</th>
+                                <th>Client ID</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Auto QA Status</th>
+                                <th>Request Status</th>
                             </tr>
                         </thead>
-                        <tbody id="modalTicketsTableBody">  <!-- table body for data rows -->
+                        <tbody id="modalTicketsTableBody">
                             <!-- tickets will be populated here -->
                         </tbody>
                     </table>
                 </div>
-                <div id="modalNoData" class="no-data" style="display: none;">  <!-- no data message in modal -->
-                    <div class="no-data-icon">📊</div>  <!-- empty state icon -->
-                    <div class="no-data-text">No tickets found</div>  <!-- empty state message -->
+                <div id="modalNoData" class="no-data" style="display: none;">
+                    <div class="no-data-icon">📊</div>
+                    <div class="no-data-text">No tickets found</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>  <!-- javascript code -->
-        // global variables
+    <script>
         let completedChart, processingChart, failedChart, callbackChart;  // chart instances
+        let clientCompletedChart, clientProcessingChart, clientFailedChart, clientCallbackChart;  // client chart instances
         let autoRefreshInterval = null;  // refresh timer
         let currentDate = null;  // selected date
         let animationTimers = {};  // animation trackers
         let currentTicketsData = null;  // store current tickets data for modal
 
-        // initialize date picker with today's date
         function initializeDatePicker() {  // setup date picker
             const today = new Date().toISOString().split('T')[0];  // get today's date
             document.getElementById('datePicker').value = today;  // set date input value
             currentDate = today;  // store current date
         }
 
-        // fetch ticket data from api
         async function fetchData(date) {  // get data from api
             const url = date ? `/api/ticket-data?date=${date}` : '/api/ticket-data';  // build url
             const response = await fetch(url);  // call api
             return await response.json();  // parse json
         }
 
-        // fetch detailed tickets for specific date and status
         async function fetchDetailedTickets(date, status) {  // get detailed ticket list
             const url = `/api/detailed-tickets?date=${date}&status=${status}`;  // build url with parameters
             const response = await fetch(url);  // call api
             return await response.json();  // parse json
         }
 
-        // update statistics cards
         function updateStats(data) {  // update stat cards
             const totalCompleted = data.completed.reduce((a, b) => a + b, 0);  // sum completed
             const totalProcessing = data.processing.reduce((a, b) => a + b, 0);  // sum processing
@@ -295,7 +320,6 @@
             animateValue('statCallback', totalCallback);  // animate callback
         }
 
-        // animate number changes
         function animateValue(id, targetValue) {  // animate number changes
             const element = document.getElementById(id);  // get element
             if (animationTimers[id]) {  // already animating?
@@ -329,7 +353,6 @@
             }, stepDuration);  // every step
         }
 
-        // show toast notification
         function showToast(message, type = 'success') {  // show notification
             const toast = document.createElement('div');  // create element
             toast.className = `toast ${type}`;  // set class
@@ -342,14 +365,12 @@
             }, 3000);
         }
 
-        // open ticket modal with specific status
         async function openTicketModal(status) {  // show modal with ticket list
             const modalTitle = document.getElementById('modalTitle');  // get modal title
             const modalTableBody = document.getElementById('modalTicketsTableBody');  // get modal table body
             const modalTable = document.getElementById('modalTicketsTable');  // get modal table
             const modalNoData = document.getElementById('modalNoData');  // get no data message
             
-            // set modal title based on status
             const statusTitles = {  // status title mapping
                 'completed': 'Completed Tickets',
                 'processing': 'Processing Tickets',
@@ -359,12 +380,10 @@
             modalTitle.textContent = statusTitles[status] || 'Tickets';  // set title
             modalTitle.className = `modal-title-${status}`;  // add status class for coloring
             
-            // show loading state
             modalTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>';  // show loading
             modalTable.style.display = 'block';  // show table
             modalNoData.style.display = 'none';  // hide no data
             
-            // open modal
             document.getElementById('ticketModal').classList.add('is-visible');  // show modal
             document.body.classList.add('modal-open');  // lock body scroll
             
@@ -377,7 +396,6 @@
                     return;  // done
                 }
                 
-                // populate table with tickets
                 modalTableBody.innerHTML = '';  // clear table
                 data.tickets.forEach(ticket => {  // loop through tickets
                     const row = document.createElement('tr');  // create row
@@ -400,13 +418,11 @@
             }
         }
 
-        // close ticket modal
         function closeTicketModal() {  // hide modal
             document.getElementById('ticketModal').classList.remove('is-visible');  // hide modal
             document.body.classList.remove('modal-open');  // unlock body scroll
         }
 
-        // close modal when clicking outside
         window.onclick = function(event) {  // handle window clicks
             const modal = document.getElementById('ticketModal');  // get modal
             if (event.target === modal) {  // clicked outside modal content
@@ -414,10 +430,9 @@
             }
         };
 
-        // create or update charts
         function createCharts(data) {  // build/update charts
             const noData = document.getElementById('noData');  // get no data message
-            const chartsSection = document.querySelector('.charts-section');  // get charts area
+            const chartsSection = document.querySelector('#overviewContent .charts-section');  // get charts area
             const dateBanner = document.getElementById('dateBanner');  // get banner
 
             if (data.client_ids.length === 0) {  // no data?
@@ -429,15 +444,12 @@
             }
 
             noData.style.display = 'none';  // hide message
-            chartsSection.style.display = 'grid';  // show charts
+            chartsSection.style.display = 'flex';  // show charts
             dateBanner.style.display = 'flex';  // show banner
             updateStats(data);  // update stats
 
             const displayDate = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {  // format date
-                weekday: 'long',  // full day name
-                year: 'numeric',  // year
-                month: 'long',  // full month
-                day: 'numeric'  // day number
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
             });
             document.getElementById('dateBannerText').textContent = `Showing data for ${displayDate}`;  // show date
 
@@ -446,162 +458,52 @@
             if (failedChart) failedChart.destroy();  // clear old chart
             if (callbackChart) callbackChart.destroy();  // clear old chart
 
-            // calculate dynamic width based on number of clients
-            const clientCount = data.client_ids.length;  // get number of clients
-            const minWidth = 500;  // minimum chart width
-            const barWidth = 80;  // width per bar
-            const calculatedWidth = Math.max(minWidth, clientCount * barWidth);  // calculate total width
-
-            // set canvas wrapper width dynamically
-            document.querySelectorAll('.chart-canvas-wrapper').forEach(wrapper => {  // for each wrapper
-                wrapper.style.minWidth = `${calculatedWidth}px`;  // set minimum width
-            });
-
             const chartConfig = {  // chart settings
-                responsive: true,  // fit container
-                maintainAspectRatio: false,  // allow height change
-                layout: {  // spacing
-                    padding: {  // padding values
-                        top: 35,  // space for labels
-                        bottom: 10,
-                        left: 10,
-                        right: 10
+                responsive: true, maintainAspectRatio: false,
+                layout: {padding: {top: 40, bottom: 20, left: 20, right: 20}},
+                plugins: {
+                    legend: {display: false},
+                    tooltip: {
+                        backgroundColor: '#111827', padding: 16,
+                        titleFont: {size: 15, weight: 'bold', family: 'Inter'},
+                        bodyFont: {size: 14, family: 'Inter'},
+                        cornerRadius: 12, displayColors: false,
+                        callbacks: {label: (context) => `${context.parsed.y} tickets`}
+                    },
+                    datalabels: {
+                        anchor: 'end', align: 'end', offset: -5,
+                        formatter: (value) => value > 0 ? value : '',
+                        font: {weight: 'bold', size: 16, family: 'Inter'},
+                        color: '#111827'
                     }
                 },
-                plugins: {  // plugin options
-                    legend: {display: false},  // no legend
-                    tooltip: {  // hover tooltips
-                        backgroundColor: '#111827',  // dark bg
-                        padding: 16,  // inner spacing
-                        titleFont: {size: 15, weight: 'bold', family: 'Inter'},  // title font
-                        bodyFont: {size: 14, family: 'Inter'},  // body font
-                        cornerRadius: 12,  // rounded
-                        displayColors: false,  // no color box
-                        callbacks: {  // custom format
-                            label: (context) => `${context.parsed.y} tickets`  // show count
-                        }
-                    },
-                    datalabels: {  // bar labels
-                        anchor: 'end',  // at bar top
-                        align: 'end',  // aligned to end
-                        offset: -5,  // nudge up
-                        formatter: (value) => {  // format text
-                            return value > 0 ? value : '';  // only show if > 0
-                        },
-                        font: {  // label font
-                            weight: 'bold',
-                            size: 14,
-                            family: 'Inter'
-                        },
-                        color: '#111827'  // dark color
-                    }
-                },
-                scales: {  // axis settings
-                    y: {  // y axis
-                        beginAtZero: true,  // start at 0
-                        grace: '5%',  // extra space at top
-                        ticks: {  // tick marks
-                            stepSize: 1,  // increment by 1
-                            font: {size: 12, family: 'Inter', weight: '600'},
-                            color: '#6b7280'
-                        },
-                        grid: {  // grid lines
-                            color: '#f3f4f6',
-                            drawBorder: false
-                        },
+                scales: {
+                    y: {
+                        beginAtZero: true, grace: '5%',
+                        ticks: {stepSize: 1, font: {size: 14, family: 'Inter', weight: '600'}, color: '#6b7280'},
+                        grid: {color: '#f3f4f6', drawBorder: false},
                         border: {display: false}
                     },
-                    x: {  // x axis
-                        ticks: {  // tick marks
-                            font: {size: 12, family: 'Inter', weight: '700'},
-                            color: '#111827',
-                            maxRotation: 45,  // rotate labels if needed
-                            minRotation: 0  // keep horizontal if possible
-                        },
-                        grid: {display: false},  // no grid
-                        border: {display: false}
+                    x: {
+                        ticks: {font: {size: 13, family: 'Inter', weight: '700'}, color: '#111827', maxRotation: 45, minRotation: 0},
+                        grid: {display: false}, border: {display: false}
                     }
                 }
             };
 
-            // create completed chart
             const ctx1 = document.getElementById('completedChart').getContext('2d');  // get canvas
-            completedChart = new Chart(ctx1, {  // create chart
-                type: 'bar',  // bar chart
-                data: {  // chart data
-                    labels: data.client_ids,  // x labels
-                    datasets: [{  // data
-                        data: data.completed,  // values
-                        backgroundColor: '#10b981',  // green
-                        borderRadius: 10,  // rounded bars
-                        hoverBackgroundColor: '#059669',  // darker on hover
-                        barPercentage: 0.7,  // bar width percentage
-                        categoryPercentage: 0.8  // category width percentage
-                    }]
-                },
-                options: chartConfig,  // use config
-                plugins: [ChartDataLabels]  // enable labels
-            });
+            completedChart = new Chart(ctx1, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.completed, backgroundColor: '#10b981', borderRadius: 12, hoverBackgroundColor: '#059669', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
 
-            // create processing chart
             const ctx2 = document.getElementById('processingChart').getContext('2d');  // get canvas
-            processingChart = new Chart(ctx2, {  // create chart
-                type: 'bar',
-                data: {
-                    labels: data.client_ids,
-                    datasets: [{
-                        data: data.processing,
-                        backgroundColor: '#f59e0b',  // orange
-                        borderRadius: 10,
-                        hoverBackgroundColor: '#d97706',
-                        barPercentage: 0.7,
-                        categoryPercentage: 0.8
-                    }]
-                },
-                options: chartConfig,
-                plugins: [ChartDataLabels]
-            });
+            processingChart = new Chart(ctx2, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.processing, backgroundColor: '#f59e0b', borderRadius: 12, hoverBackgroundColor: '#d97706', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
 
-            // create failed chart
             const ctx3 = document.getElementById('failedChart').getContext('2d');  // get canvas
-            failedChart = new Chart(ctx3, {  // create chart
-                type: 'bar',
-                data: {
-                    labels: data.client_ids,
-                    datasets: [{
-                        data: data.failed,
-                        backgroundColor: '#dc2626',  // red
-                        borderRadius: 10,
-                        hoverBackgroundColor: '#b91c1c',
-                        barPercentage: 0.7,
-                        categoryPercentage: 0.8
-                    }]
-                },
-                options: chartConfig,
-                plugins: [ChartDataLabels]
-            });
+            failedChart = new Chart(ctx3, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.failed, backgroundColor: '#dc2626', borderRadius: 12, hoverBackgroundColor: '#b91c1c', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
 
-            // create callback chart
             const ctx4 = document.getElementById('callbackChart').getContext('2d');  // get canvas
-            callbackChart = new Chart(ctx4, {  // create chart
-                type: 'bar',
-                data: {
-                    labels: data.client_ids,
-                    datasets: [{
-                        data: data.callback,
-                        backgroundColor: '#8b5cf6',  // purple
-                        borderRadius: 10,
-                        hoverBackgroundColor: '#7c3aed',
-                        barPercentage: 0.7,
-                        categoryPercentage: 0.8
-                    }]
-                },
-                options: chartConfig,
-                plugins: [ChartDataLabels]
-            });
+            callbackChart = new Chart(ctx4, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.callback, backgroundColor: '#8b5cf6', borderRadius: 12, hoverBackgroundColor: '#7c3aed', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
         }
 
-        // update dashboard with new data
         async function updateDashboard() {  // refresh everything
             const selectedDate = document.getElementById('datePicker').value;  // get date
             currentDate = selectedDate;  // save it
@@ -610,7 +512,6 @@
             createCharts(data);  // update charts
         }
 
-        // toggle auto refresh
         function toggleAutoRefresh() {  // turn auto-refresh on/off
             const checkbox = document.getElementById('autoRefresh');  // get checkbox
             const intervalInput = document.getElementById('refreshInterval');  // get interval
@@ -630,7 +531,6 @@
             }
         }
 
-        // reload data manually
         async function reloadData() {  // manual refresh
             const btn = event.target.closest('button');  // get button
             const originalHTML = btn.innerHTML;  // save text
@@ -645,7 +545,6 @@
             showToast('Data reloaded successfully!');  // notify
         }
 
-        // switch between tabs
         function switchTab(tabName) {  // tab switching function
             document.querySelectorAll('.tab-content').forEach(content => {  // hide all tabs
                 content.classList.remove('active');
@@ -665,7 +564,6 @@
             }
         }
 
-        // load list of all clients
         async function loadClientList() {  // load client list
             try {  // attempt to load
                 const response = await fetch('/api/all-clients');  // fetch clients
@@ -686,62 +584,125 @@
             }
         }
 
-        // load data for selected client
-        async function loadClientData() {  // load client data
+        async function loadClientData() {  // load client data with charts
             const clientId = document.getElementById('clientSelect').value;  // get selected client
             
             if (!clientId) {  // no client selected
                 document.getElementById('clientStats').style.display = 'none';  // hide stats
-                document.getElementById('clientTicketsTable').style.display = 'none';  // hide table
+                document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
                 document.getElementById('noClientData').style.display = 'none';  // hide no data
                 return;  // done
             }
             
             try {  // attempt to load
-                const response = await fetch(`/api/client-tickets?client_id=${clientId}`);  // fetch tickets
+                const response = await fetch(`/api/client-tickets-7days?client_id=${clientId}`);  // fetch client data
                 const data = await response.json();  // parse json
+                
+                if (!data.success) {  // request failed
+                    document.getElementById('clientStats').style.display = 'none';  // hide stats
+                    document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
+                    document.getElementById('noClientData').style.display = 'block';  // show no data
+                    showToast('Failed to load client data', 'error');  // show error
+                    return;  // done
+                }
                 
                 if (data.total_tickets === 0) {  // no tickets found
                     document.getElementById('clientStats').style.display = 'none';  // hide stats
-                    document.getElementById('clientTicketsTable').style.display = 'none';  // hide table
+                    document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
                     document.getElementById('noClientData').style.display = 'block';  // show no data
                     return;  // done
                 }
                 
                 document.getElementById('noClientData').style.display = 'none';  // hide no data
                 document.getElementById('clientStats').style.display = 'grid';  // show stats
-                document.getElementById('clientCompleted').textContent = data.stats.completed;  // update completed
-                document.getElementById('clientProcessing').textContent = data.stats.processing;  // update processing
-                document.getElementById('clientFailed').textContent = data.stats.failed;  // update failed
-                document.getElementById('clientCallback').textContent = data.stats.callback;  // update callback
+                document.getElementById('clientChartsSection').style.display = 'flex';  // show charts
                 
-                document.getElementById('clientTicketsTable').style.display = 'block';  // show table
-                const tableBody = document.getElementById('ticketsTableBody');  // get table body
-                tableBody.innerHTML = '';  // clear table
+                // Update stat cards with ALL TIME data
+                document.getElementById('clientCompleted').textContent = data.all_time_stats.completed;  // update completed
+                document.getElementById('clientProcessing').textContent = data.all_time_stats.processing;  // update processing
+                document.getElementById('clientFailed').textContent = data.all_time_stats.failed;  // update failed
+                document.getElementById('clientCallback').textContent = data.all_time_stats.callback;  // update callback
                 
-                data.tickets.forEach(ticket => {  // add each ticket
-                    const row = document.createElement('tr');  // create row
-                    row.innerHTML = `
-                        <td>${ticket.ticket_id}</td>
-                        <td><span class="status-badge ${ticket.status}">${ticket.status.toUpperCase()}</span></td>
-                        <td>${ticket.created_at}</td>
-                        <td>${ticket.auto_qa_status}</td>
-                        <td>${ticket.request_status}</td>
-                    `;  // set row html
-                    tableBody.appendChild(row);  // add row
-                });
+                // Create graphs with 7-DAY data
+                createClientCharts(data.seven_day_data);  // create charts with 7-day data
                 
-                showToast(`Loaded ${data.total_tickets} tickets for ${clientId}`, 'success');  // show success
+                showToast(`Loaded ${data.total_tickets} total tickets for ${clientId}`, 'success');  // show success
             } catch (error) {  // handle errors
                 console.error('Error loading client data:', error);  // log error
                 showToast('Failed to load client data', 'error');  // show error
+                document.getElementById('clientStats').style.display = 'none';  // hide stats
+                document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
+                document.getElementById('noClientData').style.display = 'block';  // show no data
             }
         }
 
-        // listen for date picker changes
+        function createClientCharts(sevenDayData) {  // build client charts
+            if (clientCompletedChart) clientCompletedChart.destroy();  // clear old chart
+            if (clientProcessingChart) clientProcessingChart.destroy();  // clear old chart
+            if (clientFailedChart) clientFailedChart.destroy();  // clear old chart
+            if (clientCallbackChart) clientCallbackChart.destroy();  // clear old chart
+
+            const dates = sevenDayData.dates;  // get date labels
+            const completedData = sevenDayData.completed;  // completed counts
+            const processingData = sevenDayData.processing;  // processing counts
+            const failedData = sevenDayData.failed;  // failed counts
+            const callbackData = sevenDayData.callback;  // callback counts
+
+            const chartConfig = {  // chart settings
+                responsive: true, maintainAspectRatio: false,
+                layout: {padding: {top: 40, bottom: 20, left: 20, right: 20}},
+                plugins: {
+                    legend: {display: false},
+                    tooltip: {
+                        backgroundColor: '#111827', padding: 16,
+                        titleFont: {size: 15, weight: 'bold', family: 'Inter'},
+                        bodyFont: {size: 14, family: 'Inter'},
+                        cornerRadius: 12, displayColors: false,
+                        callbacks: {label: (context) => `${context.parsed.y} tickets`}
+                    },
+                    datalabels: {
+                        anchor: 'end', align: 'end', offset: -5,
+                        formatter: (value) => value > 0 ? value : '',
+                        font: {weight: 'bold', size: 16, family: 'Inter'},
+                        color: '#111827'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true, grace: '5%',
+                        ticks: {stepSize: 1, font: {size: 14, family: 'Inter', weight: '600'}, color: '#6b7280'},
+                        grid: {color: '#f3f4f6', drawBorder: false},
+                        border: {display: false}
+                    },
+                    x: {
+                        ticks: {
+                            font: {size: 13, family: 'Inter', weight: '600'}, 
+                            color: '#111827', 
+                            maxRotation: 45,
+                            minRotation: 45,
+                            autoSkip: false
+                        },
+                        grid: {display: false}, 
+                        border: {display: false}
+                    }
+                }
+            };
+
+            const ctx1 = document.getElementById('clientCompletedChart').getContext('2d');  // get canvas
+            clientCompletedChart = new Chart(ctx1, {type: 'bar', data: {labels: dates, datasets: [{data: completedData, backgroundColor: '#10b981', borderRadius: 12, hoverBackgroundColor: '#059669', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+
+            const ctx2 = document.getElementById('clientProcessingChart').getContext('2d');  // get canvas
+            clientProcessingChart = new Chart(ctx2, {type: 'bar', data: {labels: dates, datasets: [{data: processingData, backgroundColor: '#f59e0b', borderRadius: 12, hoverBackgroundColor: '#d97706', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+
+            const ctx3 = document.getElementById('clientFailedChart').getContext('2d');  // get canvas
+            clientFailedChart = new Chart(ctx3, {type: 'bar', data: {labels: dates, datasets: [{data: failedData, backgroundColor: '#dc2626', borderRadius: 12, hoverBackgroundColor: '#b91c1c', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+
+            const ctx4 = document.getElementById('clientCallbackChart').getContext('2d');  // get canvas
+            clientCallbackChart = new Chart(ctx4, {type: 'bar', data: {labels: dates, datasets: [{data: callbackData, backgroundColor: '#8b5cf6', borderRadius: 12, hoverBackgroundColor: '#7c3aed', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+        }
+
         document.getElementById('datePicker').addEventListener('change', updateDashboard);  // watch date changes
 
-        // initialize on page load
         window.onload = async function() {  // on page load
             initializeDatePicker();  // setup date
             await updateDashboard();  // load data

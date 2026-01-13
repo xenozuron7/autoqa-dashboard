@@ -4,6 +4,7 @@ load_dotenv()  # initialize environment variables
 from flask import Flask, render_template, jsonify, request  # import flask components
 from pymongo import MongoClient  # import mongodb client
 from datetime import datetime, timedelta  # import date/time utilities
+from dateutil import parser  # import date parser for flexible parsing
 import os  # import operating system utilities
 
 app = Flask(__name__)  # initialize flask application
@@ -21,7 +22,6 @@ except Exception as e:  # handle connection failure
     print(f"✗ Failed to connect to MongoDB: {e}")  # log error
     client = None  # set client to none
 
-
 def parse_ticket_status(ticket):  # parse ticket status from ticket data
     """Determine ticket status from auto_qa_status"""
     auto_qa_status = str(ticket.get('auto_qa_status', '')).lower()  # get status field
@@ -36,11 +36,11 @@ def parse_ticket_status(ticket):  # parse ticket status from ticket data
     else:  # all other cases
         return 'processing'
 
-
 def extract_date(ticket):  # extract date from ticket document
-    """Extract date from various date fields"""
+    """Extract date from various date fields including MongoDB $date format"""
     date_obj = None  # initialize date object
     
+    # Try created_at first
     if 'created_at' in ticket and ticket['created_at']:  # try created_at first
         date_obj = ticket['created_at']
     elif 'updated_at' in ticket and ticket['updated_at']:  # try updated_at as fallback
@@ -49,32 +49,39 @@ def extract_date(ticket):  # extract date from ticket document
     if not date_obj:  # if no date found
         return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)  # return today
     
+    # Handle MongoDB $date format
+    if isinstance(date_obj, dict) and '$date' in date_obj:  # mongodb date format
+        try:  # attempt to parse mongodb date
+            date_str = date_obj['$date']  # extract date string
+            parsed_date = parser.parse(date_str)  # parse iso format
+            return parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)  # return normalized date
+        except:  # parsing failed
+            pass  # continue to other methods
+    
     if isinstance(date_obj, datetime):  # handle datetime objects
         return date_obj.replace(hour=0, minute=0, second=0, microsecond=0)  # return normalized date
     
     if isinstance(date_obj, str):  # handle string formats
         try:  # attempt to parse string
-            date_str = date_obj.split('T')[0]  # remove time portion
-            return datetime.strptime(date_str, '%Y-%m-%d')  # convert to datetime
+            parsed_date = parser.parse(date_obj)  # parse flexible format
+            return parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)  # return normalized date
         except:  # handle parsing errors
             pass  # continue to fallback
     
     return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)  # default fallback
 
-
 @app.route('/')  # define root route
 def dashboard():  # serve dashboard page
     return render_template('dashboard.html')  # render dashboard template
 
-
 @app.route('/api/ticket-data')  # define ticket data api endpoint
 def get_ticket_data():  # retrieve and filter ticket data by date
     """API endpoint to fetch ticket data from MongoDB filtered by date"""
-    
     if not client:  # verify database connection
         return jsonify({'error': 'Database connection not available'}), 500  # return connection error
     
     selected_date = request.args.get('date')  # get date parameter from query string
+    
     try:  # attempt to parse date
         filter_date = datetime.strptime(selected_date, '%Y-%m-%d') if selected_date else datetime.now()  # parse date or use current
     except ValueError:  # handle invalid date format
@@ -83,14 +90,14 @@ def get_ticket_data():  # retrieve and filter ticket data by date
     start_of_day = filter_date.replace(hour=0, minute=0, second=0, microsecond=0)  # calculate start of day
     end_of_day = start_of_day + timedelta(days=1)  # calculate end of day
     
-    query = {  # build mongodb query filter
-        'created_at': {  # filter on created_at field
-            '$gte': start_of_day,  # greater than or equal to start
-            '$lt': end_of_day  # less than end
-        }
-    }
+    # Fetch all tickets and filter in Python due to MongoDB date format
+    all_tickets = list(collection.find({}, {'_id': 0}))  # retrieve all tickets
     
-    filtered_tickets = list(collection.find(query, {'_id': 0}))  # retrieve filtered tickets
+    filtered_tickets = []  # initialize filtered list
+    for ticket in all_tickets:  # loop through tickets
+        ticket_date = extract_date(ticket)  # extract date
+        if start_of_day <= ticket_date < end_of_day:  # check if in date range
+            filtered_tickets.append(ticket)  # add to filtered list
     
     if not filtered_tickets:  # check if no tickets found
         return jsonify({  # return empty response
@@ -105,7 +112,7 @@ def get_ticket_data():  # retrieve and filter ticket data by date
     client_stats = {}  # initialize client statistics dictionary
     
     for ticket in filtered_tickets:  # process each filtered ticket
-        client_id = str(ticket.get('client_id', 'Unknown'))  # extract client id
+        client_id = str(ticket.get('client_id', 'Unknown'))  # extract client id as string
         status = parse_ticket_status(ticket)  # determine ticket status
         
         if client_id not in client_stats:  # check if client entry exists
@@ -128,11 +135,9 @@ def get_ticket_data():  # retrieve and filter ticket data by date
         'callback': [client_stats[c]['callback'] for c in client_ids]
     })
 
-
 @app.route('/api/detailed-tickets')  # define detailed tickets api endpoint
 def get_detailed_tickets():  # retrieve detailed ticket list by date and status
     """API endpoint to fetch detailed ticket list for a specific date and status"""
-    
     if not client:  # verify database connection
         return jsonify({'error': 'Database connection not available'}), 500  # return connection error
     
@@ -150,28 +155,26 @@ def get_detailed_tickets():  # retrieve detailed ticket list by date and status
     start_of_day = filter_date.replace(hour=0, minute=0, second=0, microsecond=0)  # calculate start of day
     end_of_day = start_of_day + timedelta(days=1)  # calculate end of day
     
-    query = {  # build mongodb query filter
-        'created_at': {  # filter on created_at field
-            '$gte': start_of_day,  # greater than or equal to start
-            '$lt': end_of_day  # less than end
-        }
-    }
+    # Fetch all tickets and filter in Python
+    all_tickets = list(collection.find({}, {'_id': 0}))  # retrieve all tickets
     
-    all_tickets = list(collection.find(query, {'_id': 0}).sort('created_at', -1))  # retrieve all tickets for date
-    
-    # filter tickets by status
     filtered_tickets = []  # initialize filtered list
     for ticket in all_tickets:  # process each ticket
-        ticket_status = parse_ticket_status(ticket)  # determine status
-        if ticket_status == status_filter:  # matches requested status
-            filtered_tickets.append({  # add to list
-                'ticket_id': ticket.get('ticket_id', 'N/A'),
-                'client_id': ticket.get('client_id', 'N/A'),
-                'status': ticket_status,
-                'created_at': extract_date(ticket).strftime('%Y-%m-%d %H:%M'),
-                'auto_qa_status': ticket.get('auto_qa_status', 'N/A'),
-                'request_status': ticket.get('request_status', 'N/A')
-            })
+        ticket_date = extract_date(ticket)  # extract date
+        if start_of_day <= ticket_date < end_of_day:  # check date range
+            ticket_status = parse_ticket_status(ticket)  # determine status
+            if ticket_status == status_filter:  # matches requested status
+                filtered_tickets.append({  # add to list
+                    'ticket_id': ticket.get('ticket_id', 'N/A'),
+                    'client_id': ticket.get('client_id', 'N/A'),
+                    'status': ticket_status,
+                    'created_at': extract_date(ticket).strftime('%Y-%m-%d %H:%M'),
+                    'auto_qa_status': ticket.get('auto_qa_status', 'N/A'),
+                    'request_status': ticket.get('request_status', 'N/A')
+                })
+    
+    # Sort by created_at descending
+    filtered_tickets.sort(key=lambda x: x['created_at'], reverse=True)  # sort by date
     
     return jsonify({  # return formatted response
         'date': selected_date,
@@ -180,120 +183,167 @@ def get_detailed_tickets():  # retrieve detailed ticket list by date and status
         'tickets': filtered_tickets
     })
 
-
-@app.route('/api/available-dates')  # define available dates api endpoint
-def get_available_dates():  # retrieve list of dates with available data
-    """Get list of dates that have data using aggregation"""
+@app.route('/api/client-tickets-7days')  # define client data api endpoint
+def get_client_tickets_7days():  # get client ticket data - ALL TIME for cards, 7 DAYS for graphs
+    """Get client ticket data - total count for stat cards, past 7 days for graph visualization"""
     if not client:  # verify database connection
-        return jsonify({'dates': []}), 500  # return empty response
+        return jsonify({'success': False, 'error': 'Database connection not available'}), 500  # return connection error
     
-    pipeline = [  # build aggregation pipeline
-        {'$project': {  # extract just the date part
-            'date_only': {  # create new field with formatted date
-                '$dateToString': {  # convert datetime to string
-                    'format': '%Y-%m-%d',  # specify date format
-                    'date': '$created_at'  # use created_at field
+    client_id = request.args.get('client_id')  # get client id parameter
+    
+    if not client_id:  # if no client id provided
+        return jsonify({'success': False, 'error': 'Client ID required'}), 400  # return error
+    
+    try:  # attempt to fetch data
+        # Fetch ALL tickets for this client
+        all_client_tickets = list(collection.find({'client_id': str(client_id)}, {'_id': 0}))  # query by string client_id
+        
+        if not all_client_tickets:  # if no tickets found
+            print(f"No tickets found for client {client_id}")  # debug log
+            return jsonify({  # return empty data structure
+                'success': True,
+                'total_tickets': 0,
+                'all_time_stats': {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0},
+                'seven_day_data': {
+                    'dates': get_last_n_days_labels_from_date(datetime.now(), 7),  # get 7 day labels
+                    'completed': [0] * 7,  # zero array for 7 days
+                    'processing': [0] * 7,  # zero array for 7 days
+                    'failed': [0] * 7,  # zero array for 7 days
+                    'callback': [0] * 7  # zero array for 7 days
                 }
-            }
-        }},
-        {'$group': {'_id': '$date_only'}},  # group by unique dates
-        {'$sort': {'_id': -1}}  # sort descending (newest first)
-    ]
-    
-    results = collection.aggregate(pipeline)  # execute aggregation
-    date_list = [doc['_id'] for doc in results if doc['_id']]  # extract dates
-    
-    return jsonify({'dates': date_list})  # return dates as json
-
-
-@app.route('/api/client-tickets')  # define client tickets api endpoint
-def get_client_tickets():  # retrieve tickets for specific client
-    """API endpoint to fetch all tickets for a specific client"""
-    
-    if not client:  # verify database connection
-        return jsonify({'error': 'Database connection not available'}), 500  # return connection error
-    
-    client_id = request.args.get('client_id')  # get client_id parameter from query string
-    
-    if not client_id:  # no client_id provided
-        return jsonify({'error': 'Client ID is required'}), 400  # return validation error
-    
-    query = {'client_id': client_id}  # build query filter
-    tickets = list(collection.find(query, {'_id': 0}).sort('created_at', -1))  # get tickets sorted by date (newest first)
-    
-    if not tickets:  # no tickets found for this client
-        return jsonify({  # return empty response
-            'client_id': client_id,
-            'total_tickets': 0,
-            'tickets': [],
-            'stats': {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0},
-            'message': 'No tickets found for this client'
+            })
+        
+        # Get the date range from actual tickets
+        ticket_dates = [extract_date(t) for t in all_client_tickets]  # extract all dates
+        earliest_date = min(ticket_dates)  # find earliest
+        latest_date = max(ticket_dates)  # find latest
+        
+        print(f"\n=== Client {client_id} ===")  # debug log
+        print(f"Total tickets (all time): {len(all_client_tickets)}")  # debug log
+        print(f"Date range in data: {earliest_date.strftime('%Y-%m-%d')} to {latest_date.strftime('%Y-%m-%d')}")  # debug log
+        
+        # Calculate ALL TIME stats for the stat cards
+        all_time_stats = {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}  # initialize all time counters
+        
+        for ticket in all_client_tickets:  # loop through ALL tickets
+            status = parse_ticket_status(ticket)  # get ticket status
+            if status in all_time_stats:  # if status is valid
+                all_time_stats[status] += 1  # increment counter
+        
+        print(f"All time stats: {all_time_stats}")  # debug log
+        
+        # Now calculate 7-day data for graphs ONLY
+        # Use the latest ticket date as the end date for the range
+        end_date = latest_date.replace(hour=23, minute=59, second=59, microsecond=999)  # use latest ticket date
+        start_date = (end_date - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)  # 7 days before latest
+        
+        print(f"Graph range (7 days): {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")  # debug log
+        
+        # Filter tickets by 7-day date range for graphs
+        seven_day_tickets = []  # initialize filtered tickets list for graphs
+        for ticket in all_client_tickets:  # loop through all client tickets
+            ticket_date = extract_date(ticket)  # get ticket date
+            if start_date <= ticket_date <= end_date:  # check if within 7-day range
+                seven_day_tickets.append(ticket)  # add to filtered list
+        
+        print(f"Tickets in 7-day range (for graphs): {len(seven_day_tickets)}")  # debug log
+        
+        # Organize 7-day tickets for graph visualization
+        seven_day_breakdown = organize_tickets_by_date_from_end(seven_day_tickets, end_date)  # organize tickets by date from end date
+        
+        print(f"Returning data: {len(all_client_tickets)} total tickets, {all_time_stats}")  # debug log
+        
+        return jsonify({  # return success response
+            'success': True,
+            'total_tickets': len(all_client_tickets),  # total ticket count (all time)
+            'all_time_stats': all_time_stats,  # all time status totals for stat cards
+            'seven_day_data': seven_day_breakdown  # 7-day daily breakdown for graphs
         })
-    
-    stats = {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}  # initialize stats
-    
-    for ticket in tickets:  # process each ticket
-        status = parse_ticket_status(ticket)  # determine ticket status
-        stats[status] = stats.get(status, 0) + 1  # increment status counter
-    
-    formatted_tickets = []  # initialize formatted list
-    for ticket in tickets:  # process each ticket
-        formatted_tickets.append({  # add formatted ticket data
-            'ticket_id': ticket.get('ticket_id', 'N/A'),
-            'status': parse_ticket_status(ticket),
-            'created_at': extract_date(ticket).strftime('%Y-%m-%d %H:%M'),
-            'auto_qa_status': ticket.get('auto_qa_status', 'N/A'),
-            'request_status': ticket.get('request_status', 'N/A')
-        })
-    
-    return jsonify({  # return formatted response
-        'client_id': client_id,
-        'total_tickets': len(tickets),
-        'tickets': formatted_tickets,
-        'stats': stats
-    })
+        
+    except Exception as e:  # handle errors
+        print(f'Error getting client data: {e}')  # log error
+        import traceback  # import traceback module
+        traceback.print_exc()  # print full error trace
+        return jsonify({'success': False, 'error': str(e)}), 500  # return error response
 
+def get_last_n_days_labels_from_date(end_date, n):  # generate labels for last n days from specific date
+    """Generate labels for last n days with full date format"""
+    labels = []  # initialize labels list
+    
+    for i in range(n-1, -1, -1):  # iterate backwards n days
+        date = end_date - timedelta(days=i)  # calculate date from end
+        label = date.strftime('%b %d, %Y')  # format as "Jan 05, 2026"
+        labels.append(label)  # add label
+    
+    return labels  # return labels list
+
+def organize_tickets_by_date_from_end(tickets, end_date):  # group tickets by date from end date
+    """Group tickets by date and status for 7-day view from specific end date"""
+    seven_days = {}  # initialize date dictionary
+    
+    for i in range(6, -1, -1):  # iterate backwards 7 days
+        date = end_date - timedelta(days=i)  # calculate date from end
+        date_str = date.strftime('%Y-%m-%d')  # format date as string for key
+        label = date.strftime('%b %d, %Y')  # format as "Jan 05, 2026" for display
+        
+        seven_days[date_str] = {  # initialize date entry
+            'label': label,  # store label
+            'completed': 0,  # initialize completed count
+            'processing': 0,  # initialize processing count
+            'failed': 0,  # initialize failed count
+            'callback': 0  # initialize callback count
+        }
+    
+    for ticket in tickets:  # loop through tickets
+        ticket_date = extract_date(ticket)  # get ticket date
+        date_str = ticket_date.strftime('%Y-%m-%d')  # format date string
+        
+        if date_str in seven_days:  # if date is in range
+            status = parse_ticket_status(ticket)  # get ticket status
+            if status in seven_days[date_str]:  # if status is valid
+                seven_days[date_str][status] += 1  # increment count
+    
+    dates = []  # initialize dates list
+    completed_data = []  # initialize completed data list
+    processing_data = []  # initialize processing data list
+    failed_data = []  # initialize failed data list
+    callback_data = []  # initialize callback data list
+    
+    for i in range(6, -1, -1):  # iterate backwards 7 days
+        date = end_date - timedelta(days=i)  # calculate date from end
+        date_str = date.strftime('%Y-%m-%d')  # format date string
+        
+        if date_str in seven_days:  # if date exists in dictionary
+            dates.append(seven_days[date_str]['label'])  # add label to list
+            completed_data.append(seven_days[date_str]['completed'])  # add completed count
+            processing_data.append(seven_days[date_str]['processing'])  # add processing count
+            failed_data.append(seven_days[date_str]['failed'])  # add failed count
+            callback_data.append(seven_days[date_str]['callback'])  # add callback count
+    
+    return {  # return organized data
+        'dates': dates,
+        'completed': completed_data,
+        'processing': processing_data,
+        'failed': failed_data,
+        'callback': callback_data
+    }
 
 @app.route('/api/all-clients')  # define all clients api endpoint
 def get_all_clients():  # retrieve list of all unique client ids
     """API endpoint to get list of all client IDs"""
-    
     if not client:  # verify database connection
         return jsonify({'error': 'Database connection not available'}), 500  # return connection error
     
-    pipeline = [  # build aggregation pipeline
-        {'$group': {'_id': '$client_id'}},  # group by client_id
-        {'$sort': {'_id': 1}}  # sort alphabetically
-    ]
-    
-    results = collection.aggregate(pipeline)  # execute aggregation
-    client_ids = [doc['_id'] for doc in results if doc['_id']]  # extract client ids
-    
-    return jsonify({'client_ids': client_ids})  # return client ids as json
-
-
-@app.route('/api/stats')  # define statistics api endpoint
-def get_stats():  # retrieve overall ticket statistics
-    """Get overall statistics"""
-    if not client:  # verify database connection
-        return jsonify({'error': 'Database connection not available'}), 500  # return connection error
-    
-    all_tickets = list(collection.find({}, {'_id': 0}))  # retrieve all tickets from collection
-    
-    stats = {  # initialize statistics dictionary
-        'total_tickets': len(all_tickets),
-        'completed': 0,
-        'processing': 0,
-        'failed': 0,
-        'callback': 0
-    }
-    
-    for ticket in all_tickets:  # iterate through all tickets
-        status = parse_ticket_status(ticket)  # determine ticket status
-        stats[status] = stats.get(status, 0) + 1  # increment status counter
-    
-    return jsonify(stats)  # return statistics as json
-
+    try:  # attempt to fetch clients
+        client_ids = collection.distinct('client_id')  # get distinct client ids
+        client_ids = sorted([str(cid) for cid in client_ids if cid is not None])  # convert to strings and sort
+        
+        print(f"Found {len(client_ids)} unique clients")  # debug log
+        
+        return jsonify({'client_ids': client_ids})  # return client ids as json
+    except Exception as e:  # handle errors
+        print(f"Error getting clients: {e}")  # log error
+        return jsonify({'error': str(e), 'client_ids': []}), 500  # return error
 
 @app.route('/reload-data')  # define data reload endpoint
 def reload_data():  # reload data from mongodb
@@ -311,7 +361,6 @@ def reload_data():  # reload data from mongodb
         })
     except Exception as e:  # handle reload errors
         return jsonify({'status': 'error', 'message': str(e)}), 500  # return error response
-
 
 if __name__ == '__main__':  # check if running as main script
     if client:  # verify database connection exists
