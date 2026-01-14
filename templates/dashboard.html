@@ -172,22 +172,22 @@
             <div id="clientStats" class="stats-grid" style="display: none;">
                 <div class="stat-card completed">
                     <div class="stat-icon">✓</div>
-                    <div class="stat-label">Completed Tickets (All Time)</div>
+                    <div class="stat-label">Completed Tickets (Past 7 Days)</div>
                     <div class="stat-value" id="clientCompleted">0</div>
                 </div>
                 <div class="stat-card processing">
                     <div class="stat-icon">⏳</div>
-                    <div class="stat-label">Processing Tickets (All Time)</div>
+                    <div class="stat-label">Processing Tickets (Past 7 Days)</div>
                     <div class="stat-value" id="clientProcessing">0</div>
                 </div>
                 <div class="stat-card failed">
                     <div class="stat-icon">✗</div>
-                    <div class="stat-label">Failed Tickets (All Time)</div>
+                    <div class="stat-label">Failed Tickets (Past 7 Days)</div>
                     <div class="stat-value" id="clientFailed">0</div>
                 </div>
                 <div class="stat-card callback">
                     <div class="stat-icon">📞</div>
-                    <div class="stat-label">Callback Required (All Time)</div>
+                    <div class="stat-label">Callback Required (Past 7 Days)</div>
                     <div class="stat-value" id="clientCallback">0</div>
                 </div>
             </div>
@@ -289,6 +289,88 @@
         let currentDate = null;  // selected date
         let animationTimers = {};  // animation trackers
         let currentTicketsData = null;  // store current tickets data for modal
+
+        // ===== STATE PERSISTENCE FEATURES =====
+        
+        function saveAppState() {  // save current state to localstorage
+            // Save current state to localStorage
+            const state = {
+                activeTab: document.querySelector('.tab-btn.active')?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'overview',
+                selectedDate: document.getElementById('datePicker')?.value || null,
+                selectedClient: document.getElementById('clientSelect')?.value || null,
+                autoRefreshEnabled: document.getElementById('autoRefresh')?.checked || false,
+                refreshInterval: document.getElementById('refreshInterval')?.value || 30
+            };
+            localStorage.setItem('dashboardState', JSON.stringify(state));  // store in browser
+            console.log('State saved:', state);  // debug log
+        }
+        
+        function loadAppState() {  // load state from localstorage
+            // Load state from localStorage
+            const savedState = localStorage.getItem('dashboardState');  // retrieve from browser
+            if (!savedState) {  // no saved state
+                console.log('No saved state found');  // debug log
+                return null;  // return nothing
+            }
+            try {  // attempt to parse
+                const state = JSON.parse(savedState);  // parse json
+                console.log('State loaded:', state);  // debug log
+                return state;  // return state object
+            } catch (e) {  // parsing failed
+                console.error('Error loading state:', e);  // log error
+                return null;  // return nothing
+            }
+        }
+        
+        function restoreAppState() {  // restore ui to saved state
+            // Restore the saved state
+            const state = loadAppState();  // get saved state
+            if (!state) return;  // no state, exit
+            
+            // Restore auto-refresh settings
+            if (state.autoRefreshEnabled !== undefined) {  // has refresh setting
+                const toggle = document.getElementById('autoRefresh');  // get toggle
+                if (toggle) toggle.checked = state.autoRefreshEnabled;  // set checkbox
+            }
+            if (state.refreshInterval) {  // has interval value
+                const interval = document.getElementById('refreshInterval');  // get input
+                if (interval) interval.value = state.refreshInterval;  // set value
+            }
+            
+            // Restore the active tab and its content
+            if (state.activeTab === 'client' && state.selectedClient) {  // was on client tab
+                // Switch to client tab
+                switchTab('client');  // switch tab
+                // Wait for client list to load, then select the client
+                setTimeout(() => {  // wait for dropdown
+                    const clientSelect = document.getElementById('clientSelect');  // get dropdown
+                    if (clientSelect) {  // dropdown exists
+                        clientSelect.value = state.selectedClient;  // select client
+                        // Trigger the client data load
+                        loadClientData();  // load data
+                    }
+                }, 500);
+            } else {  // was on overview tab
+                // Stay on overview or switch to it
+                switchTab('overview');  // switch to overview
+                if (state.selectedDate) {  // had selected date
+                    const datePicker = document.getElementById('datePicker');  // get date picker
+                    if (datePicker) {  // picker exists
+                        datePicker.value = state.selectedDate;  // set date
+                        currentDate = state.selectedDate;  // update variable
+                    }
+                }
+                // Load overview data
+                setTimeout(() => {  // wait briefly
+                    updateDashboard();  // load data
+                }, 300);
+            }
+            
+            // Restore auto-refresh if it was enabled
+            if (state.autoRefreshEnabled) {  // refresh was on
+                toggleAutoRefresh();  // start refresh
+            }
+        }
 
         function initializeDatePicker() {  // setup date picker
             const today = new Date().toISOString().split('T')[0];  // get today's date
@@ -546,6 +628,7 @@
         }
 
         function switchTab(tabName) {  // tab switching function
+            saveAppState();  // save state when switching tabs
             document.querySelectorAll('.tab-content').forEach(content => {  // hide all tabs
                 content.classList.remove('active');
             });
@@ -585,6 +668,7 @@
         }
 
         async function loadClientData() {  // load client data with charts
+            saveAppState();  // save state when loading client data
             const clientId = document.getElementById('clientSelect').value;  // get selected client
             
             if (!clientId) {  // no client selected
@@ -617,16 +701,16 @@
                 document.getElementById('clientStats').style.display = 'grid';  // show stats
                 document.getElementById('clientChartsSection').style.display = 'flex';  // show charts
                 
-                // Update stat cards with ALL TIME data
+                // Update stat cards with 7-day data
                 document.getElementById('clientCompleted').textContent = data.all_time_stats.completed;  // update completed
                 document.getElementById('clientProcessing').textContent = data.all_time_stats.processing;  // update processing
                 document.getElementById('clientFailed').textContent = data.all_time_stats.failed;  // update failed
                 document.getElementById('clientCallback').textContent = data.all_time_stats.callback;  // update callback
                 
-                // Create graphs with 7-DAY data
+                // Create graphs with 7-day data
                 createClientCharts(data.seven_day_data);  // create charts with 7-day data
                 
-                showToast(`Loaded ${data.total_tickets} total tickets for ${clientId}`, 'success');  // show success
+                showToast(`Loaded ${data.total_tickets} tickets for ${clientId} (past 7 days)`, 'success');  // show success
             } catch (error) {  // handle errors
                 console.error('Error loading client data:', error);  // log error
                 showToast('Failed to load client data', 'error');  // show error
@@ -701,12 +785,22 @@
             clientCallbackChart = new Chart(ctx4, {type: 'bar', data: {labels: dates, datasets: [{data: callbackData, backgroundColor: '#8b5cf6', borderRadius: 12, hoverBackgroundColor: '#7c3aed', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
         }
 
-        document.getElementById('datePicker').addEventListener('change', updateDashboard);  // watch date changes
+        document.getElementById('datePicker').addEventListener('change', () => {  // watch date changes
+            saveAppState();  // save state when date changes
+            updateDashboard();  // reload dashboard
+        });
 
         window.onload = async function() {  // on page load
             initializeDatePicker();  // setup date
             await updateDashboard();  // load data
         };
+        
+        // Restore state when page loads
+        window.addEventListener('load', () => {  // on page load event
+            setTimeout(() => {  // wait briefly for dom
+                restoreAppState();  // restore saved state
+            }, 100);
+        });
     </script>
 </body>
 </html>
