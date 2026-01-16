@@ -3,804 +3,1275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ticket Analytics Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>AutoQA Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
     <div class="bg-pattern"></div>
     
     <div class="dashboard-container">
-        
         <!-- Header -->
         <header class="dashboard-header">
             <div class="header-content">
-                <div class="header-icon">📊</div>
+                <div class="header-icon">🎯</div>
                 <div class="header-text">
-                    <h1>Ticket Analytics Dashboard</h1>
-                    <p>Real-time performance monitoring and insights</p>
+                    <h1>AutoQA Dashboard</h1>
+                    <p>Real-time ticket monitoring and analytics</p>
                 </div>
             </div>
         </header>
 
         <!-- Tab Navigation -->
         <div class="tab-navigation">
-            <button class="tab-btn active" onclick="switchTab('overview')" id="overviewTab">Overview Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('client')" id="clientTab">Client Dashboard</button>
+            <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('client')">👤 Client Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('range')">📅 Date Range Analysis</button>
         </div>
 
-        <!-- Overview Dashboard Tab -->
-        <div id="overviewContent" class="tab-content active">
-            
+        <!-- Overview Tab -->
+        <div id="overview-tab" class="tab-content active">
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="control-strip">
+                    <div class="control-group">
+                        <label class="control-label">Select Date</label>
+                        <input type="date" id="date-picker" class="date-input" onchange="loadData()">
+                    </div>
+                    
+                    <div class="refresh-toggle">
+                        <label>
+                            <input type="checkbox" id="auto-refresh-toggle" class="checkbox-custom" onchange="toggleAutoRefresh()">
+                            Auto Refresh
+                        </label>
+                        <span class="control-label">Every</span>
+                        <input type="number" id="refresh-interval" min="5" max="300" value="30" class="refresh-input" disabled onchange="updateRefreshInterval()">
+                        <span class="control-label">sec</span>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="loadData()">
+                        <span id="load-btn-text">Reload</span>
+                        <div class="loading" id="load-spinner" style="display: none;"></div>
+                    </button>
+                </div>
+            </div>
+
             <!-- Stats Grid -->
             <div class="stats-grid">
-                <div class="stat-card completed" onclick="openTicketModal('completed')">
-                    <div class="stat-icon">✓</div>
+                <div class="stat-card completed">
+                    <div class="stat-icon">✅</div>
                     <div class="stat-label">Completed Tickets</div>
-                    <div class="stat-value" id="statCompleted">0</div>
+                    <div class="stat-value" id="completed-count">0</div>
                     <div class="stat-subtitle">Successfully resolved</div>
                 </div>
                 
-                <div class="stat-card processing" onclick="openTicketModal('processing')">
-                    <div class="stat-icon">⏳</div>
+                <div class="stat-card processing">
+                    <div class="stat-icon">⚙️</div>
                     <div class="stat-label">Processing Tickets</div>
-                    <div class="stat-value" id="statProcessing">0</div>
+                    <div class="stat-value" id="processing-count">0</div>
                     <div class="stat-subtitle">Currently in progress</div>
                 </div>
                 
-                <div class="stat-card failed" onclick="openTicketModal('failed')">
-                    <div class="stat-icon">✗</div>
+                <div class="stat-card failed">
+                    <div class="stat-icon">❌</div>
                     <div class="stat-label">Failed Tickets</div>
-                    <div class="stat-value" id="statFailed">0</div>
+                    <div class="stat-value" id="failed-count">0</div>
                     <div class="stat-subtitle">Requires attention</div>
                 </div>
                 
-                <div class="stat-card callback" onclick="openTicketModal('callback')">
+                <div class="stat-card callback">
                     <div class="stat-icon">📞</div>
                     <div class="stat-label">Callback Required</div>
-                    <div class="stat-value" id="statCallback">0</div>
+                    <div class="stat-value" id="callback-count">0</div>
                     <div class="stat-subtitle">Awaiting callback</div>
                 </div>
             </div>
 
-            <!-- Control Panel -->
-            <div class="control-panel">
-                <div class="control-strip">
-                    
-                    <!-- Date Picker -->
-                    <div class="control-group">
-                        <label class="control-label">Select Date</label>
-                        <input type="date" id="datePicker" class="date-input">
-                    </div>
-
-                    <!-- Auto Refresh -->
-                    <div class="control-group">
-                        <label class="control-label">Auto Refresh</label>
-                        <div class="refresh-toggle">
-                            <label>
-                                <input type="checkbox" id="autoRefresh" class="checkbox-custom" onchange="toggleAutoRefresh()">
-                                <span>Every</span>
-                            </label>
-                            <input type="number" id="refreshInterval" value="30" min="5" max="300" class="refresh-input">
-                            <span style="color: #374151; font-size: 15px; font-weight: 600;">sec</span>
-                        </div>
-                    </div>
-
-                    <!-- Action Button -->
-                    <div class="control-group">
-                        <label class="control-label">&nbsp;</label>
-                        <button onclick="reloadData()" class="btn btn-primary">Reload</button>
-                    </div>
-                    
-                </div>
-            </div>
-
-            <!-- Date Banner -->
-            <div id="dateBanner" class="date-banner">
-                <span class="date-banner-icon">📅</span>
-                <span class="date-banner-text" id="dateBannerText"></span>
-            </div>
-
             <!-- No Data Message -->
-            <div id="noData" class="no-data" style="display: none;">
+            <div class="no-data" id="no-data-message" style="display: block;">
                 <div class="no-data-icon">📊</div>
                 <div class="no-data-text">No data available for the selected date</div>
             </div>
 
             <!-- Charts Section -->
-            <div class="charts-section">
-                
-                <!-- Completed Chart -->
-                <div class="chart-card completed">
+            <div class="charts-section" id="charts-section" style="display: none;">
+                <div class="chart-card completed" onclick="openModal('completed')">
                     <div class="chart-header">
-                        <div class="chart-icon">✓</div>
-                        <h2 class="chart-title">Completed Tickets</h2>
+                        <div class="chart-icon">✅</div>
+                        <h3 class="chart-title">Completed Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="completedChart"></canvas>
+                        <canvas id="completed-chart"></canvas>
                     </div>
                 </div>
 
-                <!-- Processing Chart -->
-                <div class="chart-card processing">
+                <div class="chart-card processing" onclick="openModal('processing')">
                     <div class="chart-header">
-                        <div class="chart-icon">⏳</div>
-                        <h2 class="chart-title">Processing Tickets</h2>
+                        <div class="chart-icon">⚙️</div>
+                        <h3 class="chart-title">Processing Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="processingChart"></canvas>
+                        <canvas id="processing-chart"></canvas>
                     </div>
                 </div>
 
-                <!-- Failed Chart -->
-                <div class="chart-card failed">
+                <div class="chart-card failed" onclick="openModal('failed')">
                     <div class="chart-header">
-                        <div class="chart-icon">✗</div>
-                        <h2 class="chart-title">Failed Tickets</h2>
+                        <div class="chart-icon">❌</div>
+                        <h3 class="chart-title">Failed Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="failedChart"></canvas>
+                        <canvas id="failed-chart"></canvas>
                     </div>
                 </div>
 
-                <!-- Callback Chart -->
-                <div class="chart-card callback">
+                <div class="chart-card callback" onclick="openModal('callback')">
                     <div class="chart-header">
                         <div class="chart-icon">📞</div>
-                        <h2 class="chart-title">Callback Required</h2>
+                        <h3 class="chart-title">Callback Required</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="callbackChart"></canvas>
+                        <canvas id="callback-chart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Client Dashboard Tab -->
-        <div id="clientContent" class="tab-content">
-            
-            <!-- Client Selector -->
+        <div id="client-tab" class="tab-content">
             <div class="client-selector">
-                <label for="clientSelect">Select Client ID:</label>
-                <select id="clientSelect" onchange="loadClientData()">
+                <label for="client-dropdown">Select Client ID:</label>
+                <select id="client-dropdown" onchange="loadClientData()">
                     <option value="">-- Select a Client --</option>
                 </select>
             </div>
 
-            <!-- Client Stats -->
-            <div id="clientStats" class="stats-grid" style="display: none;">
-                <div class="stat-card completed">
-                    <div class="stat-icon">✓</div>
-                    <div class="stat-label">Completed Tickets (Past 7 Days)</div>
-                    <div class="stat-value" id="clientCompleted">0</div>
+            <div id="client-stats" style="display: none;">
+                <div class="stats-grid">
+                    <div class="stat-card completed">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-label">Completed Tickets (Past 7 Days)</div>
+                        <div class="stat-value" id="client-completed-count">0</div>
+                    </div>
+                    
+                    <div class="stat-card processing">
+                        <div class="stat-icon">⚙️</div>
+                        <div class="stat-label">Processing Tickets (Past 7 Days)</div>
+                        <div class="stat-value" id="client-processing-count">0</div>
+                    </div>
+                    
+                    <div class="stat-card failed">
+                        <div class="stat-icon">❌</div>
+                        <div class="stat-label">Failed Tickets (Past 7 Days)</div>
+                        <div class="stat-value" id="client-failed-count">0</div>
+                    </div>
+                    
+                    <div class="stat-card callback">
+                        <div class="stat-icon">📞</div>
+                        <div class="stat-label">Callback Required (Past 7 Days)</div>
+                        <div class="stat-value" id="client-callback-count">0</div>
+                    </div>
                 </div>
-                <div class="stat-card processing">
-                    <div class="stat-icon">⏳</div>
-                    <div class="stat-label">Processing Tickets (Past 7 Days)</div>
-                    <div class="stat-value" id="clientProcessing">0</div>
-                </div>
-                <div class="stat-card failed">
-                    <div class="stat-icon">✗</div>
-                    <div class="stat-label">Failed Tickets (Past 7 Days)</div>
-                    <div class="stat-value" id="clientFailed">0</div>
-                </div>
-                <div class="stat-card callback">
-                    <div class="stat-icon">📞</div>
-                    <div class="stat-label">Callback Required (Past 7 Days)</div>
-                    <div class="stat-value" id="clientCallback">0</div>
+
+                <div class="charts-section">
+                    <div class="chart-card completed">
+                        <div class="chart-header">
+                            <div class="chart-icon">✅</div>
+                            <h3 class="chart-title">Completed Tickets (Past 7 Days)</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="client-completed-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card processing">
+                        <div class="chart-header">
+                            <div class="chart-icon">⚙️</div>
+                            <h3 class="chart-title">Processing Tickets (Past 7 Days)</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="client-processing-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card failed">
+                        <div class="chart-header">
+                            <div class="chart-icon">❌</div>
+                            <h3 class="chart-title">Failed Tickets (Past 7 Days)</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="client-failed-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card callback">
+                        <div class="chart-header">
+                            <div class="chart-icon">📞</div>
+                            <h3 class="chart-title">Callback Required (Past 7 Days)</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="client-callback-chart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Client Charts Section -->
-            <div id="clientChartsSection" class="charts-section" style="display: none;">
-                
-                <!-- Completed Chart -->
-                <div class="chart-card completed">
-                    <div class="chart-header">
-                        <div class="chart-icon">✓</div>
-                        <h2 class="chart-title">Completed Tickets (Past 7 Days)</h2>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="clientCompletedChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Processing Chart -->
-                <div class="chart-card processing">
-                    <div class="chart-header">
-                        <div class="chart-icon">⏳</div>
-                        <h2 class="chart-title">Processing Tickets (Past 7 Days)</h2>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="clientProcessingChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Failed Chart -->
-                <div class="chart-card failed">
-                    <div class="chart-header">
-                        <div class="chart-icon">✗</div>
-                        <h2 class="chart-title">Failed Tickets (Past 7 Days)</h2>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="clientFailedChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Callback Chart -->
-                <div class="chart-card callback">
-                    <div class="chart-header">
-                        <div class="chart-icon">📞</div>
-                        <h2 class="chart-title">Callback Required (Past 7 Days)</h2>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="clientCallbackChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- No Data Message -->
-            <div id="noClientData" class="no-data" style="display: none;">
-                <div class="no-data-icon">📊</div>
+            <div class="no-data" id="client-no-data" style="display: block;">
+                <div class="no-data-icon">👤</div>
                 <div class="no-data-text">No tickets found for this client</div>
             </div>
         </div>
 
-    </div>
-
-    <!-- Ticket Modal -->
-    <div id="ticketModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modalTitle">Tickets</h2>
-                <span class="modal-close" onclick="closeTicketModal()">&times;</span>
+        <!-- Date Range Analysis Tab -->
+        <div id="range-tab" class="tab-content">
+            <div class="control-panel">
+                <div class="control-strip">
+                    <div class="control-group">
+                        <label class="control-label">Start Date</label>
+                        <input type="date" id="range-start-date" class="date-input">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label class="control-label">End Date</label>
+                        <input type="date" id="range-end-date" class="date-input">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label class="control-label">Filter by Clients (Optional)</label>
+                        <div class="multi-select-wrapper">
+                            <button class="multi-select-trigger" id="client-select-trigger" onclick="toggleClientDropdown(event)">
+                                <span id="selected-clients-text">All Clients</span>
+                                <span class="dropdown-arrow">▼</span>
+                            </button>
+                            <div class="multi-select-dropdown" id="client-dropdown-menu" style="display: none;">
+                                <div class="multi-select-search">
+                                    <input type="text" id="client-search" placeholder="Search clients..." onkeyup="filterClients()">
+                                </div>
+                                <div class="multi-select-options" id="client-options">
+                                    <!-- Options populated dynamically -->
+                                </div>
+                                <div class="multi-select-actions">
+                                    <button class="btn-small" onclick="selectAllClients()">Select All</button>
+                                    <button class="btn-small" onclick="clearAllClients()">Clear All</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="loadRangeData()">
+                        <span id="range-load-btn-text">Analyze</span>
+                        <div class="loading" id="range-load-spinner" style="display: none;"></div>
+                    </button>
+                </div>
             </div>
-            <div class="modal-body">
-                <div id="modalTicketsTable" class="tickets-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Ticket ID</th>
-                                <th>Client ID</th>
-                                <th>Status</th>
-                                <th>Created At</th>
-                                <th>Auto QA Status</th>
-                                <th>Request Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modalTicketsTableBody">
-                            <!-- tickets will be populated here -->
-                        </tbody>
-                    </table>
+
+            <div class="stats-grid" id="range-stats" style="display: none;">
+                <div class="stat-card completed">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-label">Total Completed Tickets</div>
+                    <div class="stat-value" id="range-completed-count">0</div>
+                    <div class="stat-subtitle" id="range-completed-subtitle">In selected range</div>
                 </div>
-                <div id="modalNoData" class="no-data" style="display: none;">
-                    <div class="no-data-icon">📊</div>
-                    <div class="no-data-text">No tickets found</div>
+                
+                <div class="stat-card processing">
+                    <div class="stat-icon">⚙️</div>
+                    <div class="stat-label">Total Processing Tickets</div>
+                    <div class="stat-value" id="range-processing-count">0</div>
+                    <div class="stat-subtitle" id="range-processing-subtitle">In selected range</div>
                 </div>
+                
+                <div class="stat-card failed">
+                    <div class="stat-icon">❌</div>
+                    <div class="stat-label">Total Failed Tickets</div>
+                    <div class="stat-value" id="range-failed-count">0</div>
+                    <div class="stat-subtitle" id="range-failed-subtitle">In selected range</div>
+                </div>
+                
+                <div class="stat-card callback">
+                    <div class="stat-icon">📞</div>
+                    <div class="stat-label">Total Callback Required</div>
+                    <div class="stat-value" id="range-callback-count">0</div>
+                    <div class="stat-subtitle" id="range-callback-subtitle">In selected range</div>
+                </div>
+            </div>
+
+            <div class="charts-section" id="range-charts-section" style="display: none;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-icon">📈</div>
+                        <h3 class="chart-title">Daily Ticket Trend (All Statuses)</h3>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="range-combined-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="range-client-breakdown" style="display: none;">
+                <h2 class="section-title">Client Breakdown</h2>
+                <div class="client-breakdown-grid" id="client-breakdown-cards">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <div class="no-data" id="range-no-data" style="display: block;">
+                <div class="no-data-icon">📅</div>
+                <div class="no-data-text">Select a date range to analyze ticket data</div>
             </div>
         </div>
     </div>
 
-    <script>
-        let completedChart, processingChart, failedChart, callbackChart;  // chart instances
-        let clientCompletedChart, clientProcessingChart, clientFailedChart, clientCallbackChart;  // client chart instances
-        let autoRefreshInterval = null;  // refresh timer
-        let currentDate = null;  // selected date
-        let animationTimers = {};  // animation trackers
-        let currentTicketsData = null;  // store current tickets data for modal
+    <!-- Modal -->
+    <div id="ticketModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Tickets</h2>
+                <span class="modal-close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="loading" id="modal-loading"></div>
+                <table class="tickets-table" id="modal-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Client ID</th>
+                            <th>Status</th>
+                            <th>Created At</th>
+                            <th>Auto QA Status</th>
+                            <th>Request Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
-        // ===== STATE PERSISTENCE FEATURES =====
-        
-        function saveAppState() {  // save current state to localstorage
-            // Save current state to localStorage
-            const state = {
-                activeTab: document.querySelector('.tab-btn.active')?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'overview',
-                selectedDate: document.getElementById('datePicker')?.value || null,
-                selectedClient: document.getElementById('clientSelect')?.value || null,
-                autoRefreshEnabled: document.getElementById('autoRefresh')?.checked || false,
-                refreshInterval: document.getElementById('refreshInterval')?.value || 30
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+   <script>
+        const datalabelsPlugin = ChartDataLabels;
+        let currentDate = new Date().toISOString().split('T')[0];
+        let chartInstances = {};
+        let isFirstLoad = true;
+        let refreshInterval = null;
+        let clientCharts = {};
+        let rangeChartInstance = null;
+        let selectedClients = new Set();
+        let activeCounterAnimations = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date-picker').value = today;
+            document.getElementById('date-picker').max = today;
+            
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            document.getElementById('range-start-date').value = sevenDaysAgo.toISOString().split('T')[0];
+            document.getElementById('range-end-date').value = today;
+            document.getElementById('range-start-date').max = today;
+            document.getElementById('range-end-date').max = today;
+            
+            loadAllClients();
+            restoreState();
+            
+            // Auto-load data on page load with slight delay
+            setTimeout(() => {
+                loadData();
+            }, 100);
+        });
+
+        // Click outside to close dropdown
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('client-dropdown-menu');
+            const trigger = document.getElementById('client-select-trigger');
+            
+            if (dropdown && trigger && !trigger.contains(event.target) && !dropdown.contains(event.target)) {
+                dropdown.style.display = 'none';
+                trigger.classList.remove('open');
+            }
+        });
+
+        function toggleClientDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('client-dropdown-menu');
+            const trigger = document.getElementById('client-select-trigger');
+            
+            if (dropdown.style.display === 'none') {
+                dropdown.style.display = 'block';
+                trigger.classList.add('open');
+            } else {
+                dropdown.style.display = 'none';
+                trigger.classList.remove('open');
+            }
+        }
+
+        function filterClients() {
+            const searchTerm = document.getElementById('client-search').value.toLowerCase();
+            const options = document.querySelectorAll('.multi-select-option');
+            
+            options.forEach(option => {
+                const text = option.textContent.toLowerCase();
+                option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+            });
+        }
+
+        function selectAllClients() {
+            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = true;
+                selectedClients.add(cb.value);
+            });
+            updateSelectedClientsText();
+        }
+
+        function clearAllClients() {
+            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = false;
+            });
+            selectedClients.clear();
+            updateSelectedClientsText();
+        }
+
+        function handleClientSelection(checkbox) {
+            if (checkbox.checked) {
+                selectedClients.add(checkbox.value);
+            } else {
+                selectedClients.delete(checkbox.value);
+            }
+            updateSelectedClientsText();
+        }
+
+        function updateSelectedClientsText() {
+            const text = document.getElementById('selected-clients-text');
+            const count = selectedClients.size;
+            
+            if (count === 0) {
+                text.textContent = 'All Clients';
+            } else if (count === 1) {
+                text.textContent = Array.from(selectedClients)[0];
+            } else {
+                text.textContent = `${count} clients selected`;
+            }
+        }
+
+        async function loadRangeClients() {
+            try {
+                const response = await fetch('/api/all-clients');
+                const data = await response.json();
+                
+                const optionsContainer = document.getElementById('client-options');
+                optionsContainer.innerHTML = data.client_ids.map(clientId => `
+                    <label class="multi-select-option">
+                        <input type="checkbox" value="${clientId}" onchange="handleClientSelection(this)">
+                        <span>${clientId}</span>
+                    </label>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading clients:', error);
+            }
+        }
+
+        async function loadRangeData() {
+            const startDate = document.getElementById('range-start-date').value;
+            const endDate = document.getElementById('range-end-date').value;
+            
+            if (!startDate || !endDate) {
+                showToast('Please select both start and end dates', 'error');
+                return;
+            }
+            
+            const loadBtn = document.getElementById('range-load-btn-text');
+            const spinner = document.getElementById('range-load-spinner');
+            
+            loadBtn.style.display = 'none';
+            spinner.style.display = 'inline-block';
+            
+            try {
+                let url = `/api/ticket-data-range?start_date=${startDate}&end_date=${endDate}`;
+                
+                if (selectedClients.size > 0) {
+                    url += `&client_ids=${Array.from(selectedClients).join(',')}`;
+                }
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to load data');
+                }
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error('Invalid response from server');
+                }
+                
+                document.getElementById('range-no-data').style.display = 'none';
+                document.getElementById('range-stats').style.display = 'grid';
+                
+                const subtitle = selectedClients.size > 0 
+                    ? `${selectedClients.size} client(s), ${data.total_days} days`
+                    : `All clients, ${data.total_days} days`;
+                
+                document.getElementById('range-completed-subtitle').textContent = subtitle;
+                document.getElementById('range-processing-subtitle').textContent = subtitle;
+                document.getElementById('range-failed-subtitle').textContent = subtitle;
+                document.getElementById('range-callback-subtitle').textContent = subtitle;
+                
+                animateCounter('range-completed-count', data.total_stats.completed);
+                animateCounter('range-processing-count', data.total_stats.processing);
+                animateCounter('range-failed-count', data.total_stats.failed);
+                animateCounter('range-callback-count', data.total_stats.callback);
+                
+                document.getElementById('range-charts-section').style.display = 'flex';
+                updateRangeChart(data.daily_breakdown);
+                
+                if (data.client_breakdown) {
+                    displayClientBreakdown(data.client_breakdown);
+                } else {
+                    document.getElementById('range-client-breakdown').style.display = 'none';
+                }
+                
+            } catch (error) {
+                console.error('Error loading range data:', error);
+                showToast(error.message || 'Failed to load data', 'error');
+                document.getElementById('range-no-data').style.display = 'block';
+                document.getElementById('range-stats').style.display = 'none';
+                document.getElementById('range-charts-section').style.display = 'none';
+                document.getElementById('range-client-breakdown').style.display = 'none';
+            } finally {
+                loadBtn.style.display = 'inline';
+                spinner.style.display = 'none';
+            }
+        }
+
+        function updateRangeChart(dailyData) {
+            const canvas = document.getElementById('range-combined-chart');
+            
+            if (rangeChartInstance) {
+                rangeChartInstance.destroy();
+            }
+            
+            const ctx = canvas.getContext('2d');
+            
+            rangeChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dailyData.dates,
+                    datasets: [
+                        {
+                            label: 'Completed',
+                            data: dailyData.completed,
+                            backgroundColor: '#10b981',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 60,
+                            hoverBackgroundColor: '#059669'
+                        },
+                        {
+                            label: 'Processing',
+                            data: dailyData.processing,
+                            backgroundColor: '#f59e0b',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 60,
+                            hoverBackgroundColor: '#d97706'
+                        },
+                        {
+                            label: 'Failed',
+                            data: dailyData.failed,
+                            backgroundColor: '#dc2626',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 60,
+                            hoverBackgroundColor: '#b91c1c'
+                        },
+                        {
+                            label: 'Callback',
+                            data: dailyData.callback,
+                            backgroundColor: '#8b5cf6',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 60,
+                            hoverBackgroundColor: '#7c3aed'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onHover: (event, activeElements) => {
+                        event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                        },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            offset: 4,
+                            formatter: (value) => value > 0 ? value.toLocaleString() : '',
+                            color: '#374151',
+                            font: { weight: 'bold', size: 11 }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 },
+                            grace: '15%',
+                            grid: { color: '#f3f4f6' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart',
+                        animateScale: true,
+                        animateRotate: true
+                    },
+                    interaction: {
+                        mode: 'point',
+                        intersect: true
+                    },
+                    elements: {
+                        bar: {
+                            borderWidth: 0,
+                            hoverBorderWidth: 2,
+                            hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
+                        }
+                    }
+                },
+                plugins: [datalabelsPlugin]
+            });
+        }
+
+        function displayClientBreakdown(clientData) {
+            const container = document.getElementById('client-breakdown-cards');
+            const section = document.getElementById('range-client-breakdown');
+            
+            section.style.display = 'block';
+            
+            container.innerHTML = Object.entries(clientData).map(([clientId, stats]) => `
+                <div class="client-card">
+                    <div class="client-card-header">${clientId}</div>
+                    <div class="client-card-stats">
+                        <div class="client-stat-row">
+                            <span class="client-stat-label">Completed:</span>
+                            <span class="client-stat-value completed">${stats.completed.toLocaleString()}</span>
+                        </div>
+                        <div class="client-stat-row">
+                            <span class="client-stat-label">Processing:</span>
+                            <span class="client-stat-value processing">${stats.processing.toLocaleString()}</span>
+                        </div>
+                        <div class="client-stat-row">
+                            <span class="client-stat-label">Failed:</span>
+                            <span class="client-stat-value failed">${stats.failed.toLocaleString()}</span>
+                        </div>
+                        <div class="client-stat-row">
+                            <span class="client-stat-label">Callback:</span>
+                            <span class="client-stat-value callback">${stats.callback.toLocaleString()}</span>
+                        </div>
+                        <div class="client-stat-row" style="border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;">
+                            <span class="client-stat-label" style="font-weight: 600;">Total:</span>
+                            <span class="client-stat-value" style="font-weight: 700;">${stats.total.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Tab switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (tab === 'overview') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                document.getElementById('overview-tab').classList.add('active');
+            } else if (tab === 'client') {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('client-tab').classList.add('active');
+            } else if (tab === 'range') {
+                document.querySelectorAll('.tab-btn')[2].classList.add('active');
+                document.getElementById('range-tab').classList.add('active');
+                
+                if (!document.getElementById('client-options').children.length) {
+                    loadRangeClients();
+                }
+            }
+            
+            saveState();
+        }
+
+        // Load data
+        async function loadData() {
+            const selectedDate = document.getElementById('date-picker').value;
+            currentDate = selectedDate;
+            
+            const loadBtn = document.getElementById('load-btn-text');
+            const spinner = document.getElementById('load-spinner');
+            
+            loadBtn.style.display = 'none';
+            spinner.style.display = 'inline-block';
+
+            try {
+                const response = await fetch(`/api/ticket-data?date=${currentDate}`);
+                const data = await response.json();
+
+                if (data.message === 'No data available') {
+                    document.getElementById('no-data-message').style.display = 'block';
+                    document.getElementById('charts-section').style.display = 'none';
+                    updateStatCards(0, 0, 0, 0);
+                } else {
+                    document.getElementById('no-data-message').style.display = 'none';
+                    document.getElementById('charts-section').style.display = 'flex';
+                    
+                    const completedTotal = data.completed.reduce((a, b) => a + b, 0);
+                    const processingTotal = data.processing.reduce((a, b) => a + b, 0);
+                    const failedTotal = data.failed.reduce((a, b) => a + b, 0);
+                    const callbackTotal = data.callback.reduce((a, b) => a + b, 0);
+                    
+                    updateStatCards(completedTotal, processingTotal, failedTotal, callbackTotal);
+                    updateCharts(data);
+                }
+                
+                isFirstLoad = false;
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showToast('Failed to load data', 'error');
+            } finally {
+                loadBtn.style.display = 'inline';
+                spinner.style.display = 'none';
+            }
+        }
+
+        function updateStatCards(completed, processing, failed, callback) {
+            animateCounter('completed-count', completed);
+            animateCounter('processing-count', processing);
+            animateCounter('failed-count', failed);
+            animateCounter('callback-count', callback);
+        }
+
+        function animateCounter(elementId, targetValue) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            // Clear any existing animation for this element
+            if (activeCounterAnimations[elementId]) {
+                clearInterval(activeCounterAnimations[elementId]);
+                delete activeCounterAnimations[elementId];
+            }
+            
+            const duration = isFirstLoad ? 1000 : 500;
+            const startValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
+            
+            // If values are the same, just update and return
+            if (startValue === targetValue) {
+                element.textContent = targetValue.toLocaleString();
+                return;
+            }
+            
+            const increment = (targetValue - startValue) / (duration / 16);
+            let currentValue = startValue;
+
+            const timer = setInterval(() => {
+                currentValue += increment;
+                if ((increment > 0 && currentValue >= targetValue) || (increment < 0 && currentValue <= targetValue)) {
+                    element.textContent = targetValue.toLocaleString();
+                    clearInterval(timer);
+                    delete activeCounterAnimations[elementId];
+                } else {
+                    element.textContent = Math.round(currentValue).toLocaleString();
+                }
+            }, 16);
+            
+            activeCounterAnimations[elementId] = timer;
+        }
+
+        function updateCharts(data) {
+            createOrUpdateChart('completed', data.client_ids, data.completed, '#10b981');
+            createOrUpdateChart('processing', data.client_ids, data.processing, '#f59e0b');
+            createOrUpdateChart('failed', data.client_ids, data.failed, '#dc2626');
+            createOrUpdateChart('callback', data.client_ids, data.callback, '#8b5cf6');
+        }
+
+        function createOrUpdateChart(type, labels, data, color) {
+            const canvasId = `${type}-chart`;
+            const canvas = document.getElementById(canvasId);
+            
+            if (chartInstances[type]) {
+                chartInstances[type].destroy();
+            }
+            
+            const hoverColors = {
+                '#10b981': '#059669',
+                '#f59e0b': '#d97706',
+                '#dc2626': '#b91c1c',
+                '#8b5cf6': '#7c3aed'
             };
-            localStorage.setItem('dashboardState', JSON.stringify(state));  // store in browser
-            console.log('State saved:', state);  // debug log
-        }
-        
-        function loadAppState() {  // load state from localstorage
-            // Load state from localStorage
-            const savedState = localStorage.getItem('dashboardState');  // retrieve from browser
-            if (!savedState) {  // no saved state
-                console.log('No saved state found');  // debug log
-                return null;  // return nothing
-            }
-            try {  // attempt to parse
-                const state = JSON.parse(savedState);  // parse json
-                console.log('State loaded:', state);  // debug log
-                return state;  // return state object
-            } catch (e) {  // parsing failed
-                console.error('Error loading state:', e);  // log error
-                return null;  // return nothing
-            }
-        }
-        
-        function restoreAppState() {  // restore ui to saved state
-            // Restore the saved state
-            const state = loadAppState();  // get saved state
-            if (!state) return;  // no state, exit
             
-            // Restore auto-refresh settings
-            if (state.autoRefreshEnabled !== undefined) {  // has refresh setting
-                const toggle = document.getElementById('autoRefresh');  // get toggle
-                if (toggle) toggle.checked = state.autoRefreshEnabled;  // set checkbox
-            }
-            if (state.refreshInterval) {  // has interval value
-                const interval = document.getElementById('refreshInterval');  // get input
-                if (interval) interval.value = state.refreshInterval;  // set value
-            }
-            
-            // Restore the active tab and its content
-            if (state.activeTab === 'client' && state.selectedClient) {  // was on client tab
-                // Switch to client tab
-                switchTab('client');  // switch tab
-                // Wait for client list to load, then select the client
-                setTimeout(() => {  // wait for dropdown
-                    const clientSelect = document.getElementById('clientSelect');  // get dropdown
-                    if (clientSelect) {  // dropdown exists
-                        clientSelect.value = state.selectedClient;  // select client
-                        // Trigger the client data load
-                        loadClientData();  // load data
+            const ctx = canvas.getContext('2d');
+            chartInstances[type] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Tickets',
+                        data: data,
+                        backgroundColor: color,
+                        hoverBackgroundColor: hoverColors[color],
+                        borderRadius: 8,
+                        borderSkipped: false,
+                        maxBarThickness: 80
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (event, activeElements) => {
+                        if (activeElements.length > 0) {
+                            openModal(type);
+                        }
+                    },
+                    onHover: (event, activeElements) => {
+                        event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            offset: 4,
+                            formatter: (value) => value > 0 ? value.toLocaleString() : '',
+                            color: '#374151',
+                            font: { weight: 'bold', size: 12 }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 },
+                            grace: '15%',
+                            grid: { color: '#f3f4f6' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    },
+                    animation: {
+                        duration: isFirstLoad ? 1500 : 500,
+                        easing: 'easeOutQuart',
+                        animateScale: true,
+                        animateRotate: true
+                    },
+                    interaction: {
+                        mode: 'point',
+                        intersect: true
+                    },
+                    elements: {
+                        bar: {
+                            borderWidth: 0,
+                            hoverBorderWidth: 2,
+                            hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
+                        }
                     }
-                }, 500);
-            } else {  // was on overview tab
-                // Stay on overview or switch to it
-                switchTab('overview');  // switch to overview
-                if (state.selectedDate) {  // had selected date
-                    const datePicker = document.getElementById('datePicker');  // get date picker
-                    if (datePicker) {  // picker exists
-                        datePicker.value = state.selectedDate;  // set date
-                        currentDate = state.selectedDate;  // update variable
-                    }
-                }
-                // Load overview data
-                setTimeout(() => {  // wait briefly
-                    updateDashboard();  // load data
-                }, 300);
+                },
+                plugins: [datalabelsPlugin]
+            });
+        }
+
+        async function loadAllClients() {
+            try {
+                const response = await fetch('/api/all-clients');
+                const data = await response.json();
+                
+                const dropdown = document.getElementById('client-dropdown');
+                data.client_ids.forEach(clientId => {
+                    const option = document.createElement('option');
+                    option.value = clientId;
+                    option.textContent = clientId;
+                    dropdown.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading clients:', error);
             }
+        }
+
+        async function loadClientData() {
+            const clientId = document.getElementById('client-dropdown').value;
             
-            // Restore auto-refresh if it was enabled
-            if (state.autoRefreshEnabled) {  // refresh was on
-                toggleAutoRefresh();  // start refresh
-            }
-        }
-
-        function initializeDatePicker() {  // setup date picker
-            const today = new Date().toISOString().split('T')[0];  // get today's date
-            document.getElementById('datePicker').value = today;  // set date input value
-            currentDate = today;  // store current date
-        }
-
-        async function fetchData(date) {  // get data from api
-            const url = date ? `/api/ticket-data?date=${date}` : '/api/ticket-data';  // build url
-            const response = await fetch(url);  // call api
-            return await response.json();  // parse json
-        }
-
-        async function fetchDetailedTickets(date, status) {  // get detailed ticket list
-            const url = `/api/detailed-tickets?date=${date}&status=${status}`;  // build url with parameters
-            const response = await fetch(url);  // call api
-            return await response.json();  // parse json
-        }
-
-        function updateStats(data) {  // update stat cards
-            const totalCompleted = data.completed.reduce((a, b) => a + b, 0);  // sum completed
-            const totalProcessing = data.processing.reduce((a, b) => a + b, 0);  // sum processing
-            const totalFailed = data.failed.reduce((a, b) => a + b, 0);  // sum failed
-            const totalCallback = data.callback.reduce((a, b) => a + b, 0);  // sum callback
-
-            animateValue('statCompleted', totalCompleted);  // animate completed
-            animateValue('statProcessing', totalProcessing);  // animate processing
-            animateValue('statFailed', totalFailed);  // animate failed
-            animateValue('statCallback', totalCallback);  // animate callback
-        }
-
-        function animateValue(id, targetValue) {  // animate number changes
-            const element = document.getElementById(id);  // get element
-            if (animationTimers[id]) {  // already animating?
-                clearInterval(animationTimers[id]);  // stop it
-                delete animationTimers[id];  // remove timer
+            if (!clientId) {
+                document.getElementById('client-no-data').style.display = 'block';
+                document.getElementById('client-stats').style.display = 'none';
+                return;
             }
 
-            const currentValue = parseInt(element.textContent) || 0;  // current number
-            if (currentValue === targetValue) {  // same value?
-                element.textContent = targetValue;  // just set it
-                return;  // done
-            }
+            try {
+                const response = await fetch(`/api/client-tickets-7days?client_id=${clientId}`);
+                const data = await response.json();
 
-            const duration = 800;  // animation duration
-            const steps = 40;  // number of steps
-            const stepDuration = duration / steps;  // time per step
-            const valueChange = targetValue - currentValue;  // total change
-            const stepValue = valueChange / steps;  // change per step
-            let currentStep = 0;  // start counting
+                if (data.success) {
+                    document.getElementById('client-no-data').style.display = 'none';
+                    document.getElementById('client-stats').style.display = 'block';
 
-            animationTimers[id] = setInterval(() => {  // run animation
-                currentStep++;  // next step
-                if (currentStep >= steps) {  // done?
-                    element.textContent = targetValue;  // set final
-                    clearInterval(animationTimers[id]);  // stop
-                    delete animationTimers[id];  // clean up
-                } else {  // keep going
-                    const newValue = Math.round(currentValue + (stepValue * currentStep));  // calculate
-                    element.textContent = newValue;  // update
+                    animateCounter('client-completed-count', data.all_time_stats.completed);
+                    animateCounter('client-processing-count', data.all_time_stats.processing);
+                    animateCounter('client-failed-count', data.all_time_stats.failed);
+                    animateCounter('client-callback-count', data.all_time_stats.callback);
+
+                    updateClientCharts(data.seven_day_data);
                 }
-            }, stepDuration);  // every step
+            } catch (error) {
+                console.error('Error loading client data:', error);
+            }
         }
 
-        function showToast(message, type = 'success') {  // show notification
-            const toast = document.createElement('div');  // create element
-            toast.className = `toast ${type}`;  // set class
-            toast.textContent = message;  // set message
-            document.body.appendChild(toast);  // add to page
-
-            setTimeout(() => {  // wait 3 seconds
-                toast.style.animation = 'slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) reverse';  // slide out
-                setTimeout(() => toast.remove(), 400);  // remove
-            }, 3000);
-        }
-
-        async function openTicketModal(status) {  // show modal with ticket list
-            const modalTitle = document.getElementById('modalTitle');  // get modal title
-            const modalTableBody = document.getElementById('modalTicketsTableBody');  // get modal table body
-            const modalTable = document.getElementById('modalTicketsTable');  // get modal table
-            const modalNoData = document.getElementById('modalNoData');  // get no data message
+        function updateClientCharts(sevenDayData) {
+            const types = ['completed', 'processing', 'failed', 'callback'];
+            const colors = {
+                completed: '#10b981',
+                processing: '#f59e0b',
+                failed: '#dc2626',
+                callback: '#8b5cf6'
+            };
             
-            const statusTitles = {  // status title mapping
+            const hoverColors = {
+                completed: '#059669',
+                processing: '#d97706',
+                failed: '#b91c1c',
+                callback: '#7c3aed'
+            };
+
+            types.forEach(type => {
+                const canvasId = `client-${type}-chart`;
+                const canvas = document.getElementById(canvasId);
+                
+                if (clientCharts[type]) {
+                    clientCharts[type].destroy();
+                }
+                
+                const ctx = canvas.getContext('2d');
+                clientCharts[type] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: sevenDayData.dates,
+                        datasets: [{
+                            label: type.charAt(0).toUpperCase() + type.slice(1),
+                            data: sevenDayData[type],
+                            backgroundColor: colors[type],
+                            hoverBackgroundColor: hoverColors[type],
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 80
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        onHover: (event, activeElements) => {
+                            event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                anchor: 'end',
+                                align: 'top',
+                                offset: 4,
+                                formatter: (value) => value > 0 ? value.toLocaleString() : '',
+                                color: '#374151',
+                                font: { weight: 'bold', size: 12 }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                padding: 12,
+                                titleFont: { size: 14, weight: 'bold' },
+                                bodyFont: { size: 13 }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { precision: 0 },
+                                grace: '15%',
+                                grid: { color: '#f3f4f6' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        },
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeOutQuart',
+                            animateScale: true,
+                            animateRotate: true
+                        },
+                        interaction: {
+                            mode: 'point',
+                            intersect: true
+                        },
+                        elements: {
+                            bar: {
+                                borderWidth: 0,
+                                hoverBorderWidth: 2,
+                                hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
+                            }
+                        }
+                    },
+                    plugins: [datalabelsPlugin]
+                });
+            });
+        }
+
+        async function openModal(status) {
+            const modal = document.getElementById('ticketModal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalLoading = document.getElementById('modal-loading');
+            const modalTable = document.getElementById('modal-table');
+            const tableBody = document.getElementById('modal-table-body');
+
+            const statusTitles = {
                 'completed': 'Completed Tickets',
                 'processing': 'Processing Tickets',
                 'failed': 'Failed Tickets',
                 'callback': 'Callback Required Tickets'
             };
-            modalTitle.textContent = statusTitles[status] || 'Tickets';  // set title
-            modalTitle.className = `modal-title-${status}`;  // add status class for coloring
-            
-            modalTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>';  // show loading
-            modalTable.style.display = 'block';  // show table
-            modalNoData.style.display = 'none';  // hide no data
-            
-            document.getElementById('ticketModal').classList.add('is-visible');  // show modal
-            document.body.classList.add('modal-open');  // lock body scroll
-            
-            try {  // attempt to fetch data
-                const data = await fetchDetailedTickets(currentDate, status);  // get tickets
-                
-                if (data.tickets.length === 0) {  // no tickets found
-                    modalTable.style.display = 'none';  // hide table
-                    modalNoData.style.display = 'block';  // show no data message
-                    return;  // done
-                }
-                
-                modalTableBody.innerHTML = '';  // clear table
-                data.tickets.forEach(ticket => {  // loop through tickets
-                    const row = document.createElement('tr');  // create row
-                    row.innerHTML = `
-                        <td>${ticket.ticket_id}</td>
-                        <td>${ticket.client_id}</td>
-                        <td><span class="status-badge ${ticket.status}">${ticket.status.toUpperCase()}</span></td>
-                        <td>${ticket.created_at}</td>
-                        <td>${ticket.auto_qa_status}</td>
-                        <td>${ticket.request_status}</td>
-                    `;  // set row content
-                    modalTableBody.appendChild(row);  // add row to table
-                });
-                
-            } catch (error) {  // handle errors
-                console.error('Error loading tickets:', error);  // log error
-                modalTable.style.display = 'none';  // hide table
-                modalNoData.style.display = 'block';  // show no data
-                showToast('Failed to load tickets', 'error');  // show error toast
-            }
-        }
 
-        function closeTicketModal() {  // hide modal
-            document.getElementById('ticketModal').classList.remove('is-visible');  // hide modal
-            document.body.classList.remove('modal-open');  // unlock body scroll
-        }
-
-        window.onclick = function(event) {  // handle window clicks
-            const modal = document.getElementById('ticketModal');  // get modal
-            if (event.target === modal) {  // clicked outside modal content
-                closeTicketModal();  // close modal
-            }
-        };
-
-        function createCharts(data) {  // build/update charts
-            const noData = document.getElementById('noData');  // get no data message
-            const chartsSection = document.querySelector('#overviewContent .charts-section');  // get charts area
-            const dateBanner = document.getElementById('dateBanner');  // get banner
-
-            if (data.client_ids.length === 0) {  // no data?
-                noData.style.display = 'block';  // show message
-                chartsSection.style.display = 'none';  // hide charts
-                dateBanner.style.display = 'none';  // hide banner
-                updateStats({completed: [0], processing: [0], failed: [0], callback: [0], client_ids: []});  // zero stats
-                return;  // done
-            }
-
-            noData.style.display = 'none';  // hide message
-            chartsSection.style.display = 'flex';  // show charts
-            dateBanner.style.display = 'flex';  // show banner
-            updateStats(data);  // update stats
-
-            const displayDate = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {  // format date
-                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-            });
-            document.getElementById('dateBannerText').textContent = `Showing data for ${displayDate}`;  // show date
-
-            if (completedChart) completedChart.destroy();  // clear old chart
-            if (processingChart) processingChart.destroy();  // clear old chart
-            if (failedChart) failedChart.destroy();  // clear old chart
-            if (callbackChart) callbackChart.destroy();  // clear old chart
-
-            const chartConfig = {  // chart settings
-                responsive: true, maintainAspectRatio: false,
-                layout: {padding: {top: 40, bottom: 20, left: 20, right: 20}},
-                plugins: {
-                    legend: {display: false},
-                    tooltip: {
-                        backgroundColor: '#111827', padding: 16,
-                        titleFont: {size: 15, weight: 'bold', family: 'Inter'},
-                        bodyFont: {size: 14, family: 'Inter'},
-                        cornerRadius: 12, displayColors: false,
-                        callbacks: {label: (context) => `${context.parsed.y} tickets`}
-                    },
-                    datalabels: {
-                        anchor: 'end', align: 'end', offset: -5,
-                        formatter: (value) => value > 0 ? value : '',
-                        font: {weight: 'bold', size: 16, family: 'Inter'},
-                        color: '#111827'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true, grace: '5%',
-                        ticks: {stepSize: 1, font: {size: 14, family: 'Inter', weight: '600'}, color: '#6b7280'},
-                        grid: {color: '#f3f4f6', drawBorder: false},
-                        border: {display: false}
-                    },
-                    x: {
-                        ticks: {font: {size: 13, family: 'Inter', weight: '700'}, color: '#111827', maxRotation: 45, minRotation: 0},
-                        grid: {display: false}, border: {display: false}
-                    }
-                }
+            const statusClasses = {
+                'completed': 'modal-title-completed',
+                'processing': 'modal-title-processing',
+                'failed': 'modal-title-failed',
+                'callback': 'modal-title-callback'
             };
 
-            const ctx1 = document.getElementById('completedChart').getContext('2d');  // get canvas
-            completedChart = new Chart(ctx1, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.completed, backgroundColor: '#10b981', borderRadius: 12, hoverBackgroundColor: '#059669', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+            modalTitle.textContent = statusTitles[status] || 'Tickets';
+            modalTitle.className = statusClasses[status] || '';
+            modal.classList.add('is-visible');
+            document.body.classList.add('modal-open');
+            modalLoading.style.display = 'block';
+            modalTable.style.display = 'none';
 
-            const ctx2 = document.getElementById('processingChart').getContext('2d');  // get canvas
-            processingChart = new Chart(ctx2, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.processing, backgroundColor: '#f59e0b', borderRadius: 12, hoverBackgroundColor: '#d97706', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+            try {
+                const response = await fetch(`/api/detailed-tickets?date=${currentDate}&status=${status}`);
+                const data = await response.json();
 
-            const ctx3 = document.getElementById('failedChart').getContext('2d');  // get canvas
-            failedChart = new Chart(ctx3, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.failed, backgroundColor: '#dc2626', borderRadius: 12, hoverBackgroundColor: '#b91c1c', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
-
-            const ctx4 = document.getElementById('callbackChart').getContext('2d');  // get canvas
-            callbackChart = new Chart(ctx4, {type: 'bar', data: {labels: data.client_ids, datasets: [{data: data.callback, backgroundColor: '#8b5cf6', borderRadius: 12, hoverBackgroundColor: '#7c3aed', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
-        }
-
-        async function updateDashboard() {  // refresh everything
-            const selectedDate = document.getElementById('datePicker').value;  // get date
-            currentDate = selectedDate;  // save it
-            const data = await fetchData(selectedDate);  // fetch data
-            currentTicketsData = data;  // store for modal use
-            createCharts(data);  // update charts
-        }
-
-        function toggleAutoRefresh() {  // turn auto-refresh on/off
-            const checkbox = document.getElementById('autoRefresh');  // get checkbox
-            const intervalInput = document.getElementById('refreshInterval');  // get interval
-
-            if (checkbox.checked) {  // turning on?
-                const seconds = parseInt(intervalInput.value);  // get seconds
-                autoRefreshInterval = setInterval(updateDashboard, seconds * 1000);  // start timer
-                intervalInput.disabled = true;  // lock input
-                showToast(`Auto-refresh enabled (${seconds}s)`);  // notify
-            } else {  // turning off
-                if (autoRefreshInterval) {  // timer exists?
-                    clearInterval(autoRefreshInterval);  // stop it
-                    autoRefreshInterval = null;  // clear it
+                if (data.tickets && data.tickets.length > 0) {
+                    tableBody.innerHTML = data.tickets.map(ticket => `
+                        <tr>
+                            <td>${ticket.ticket_id}</td>
+                            <td>${ticket.client_id}</td>
+                            <td><span class="status-badge ${status}">${ticket.status}</span></td>
+                            <td>${ticket.created_at}</td>
+                            <td>${ticket.auto_qa_status}</td>
+                            <td>${ticket.request_status}</td>
+                        </tr>
+                    `).join('');
+                    modalTable.style.display = 'table';
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No tickets found</td></tr>';
+                    modalTable.style.display = 'table';
                 }
-                intervalInput.disabled = false;  // unlock input
-                showToast('Auto-refresh disabled');  // notify
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #dc2626;">Error loading tickets</td></tr>';
+                modalTable.style.display = 'table';
+            } finally {
+                modalLoading.style.display = 'none';
             }
         }
 
-        async function reloadData() {  // manual refresh
-            const btn = event.target.closest('button');  // get button
-            const originalHTML = btn.innerHTML;  // save text
-            btn.innerHTML = '<span class="loading"></span> Loading...';  // show loading
-            btn.disabled = true;  // disable
-
-            await fetch('/reload-data');  // hit reload api
-            await updateDashboard();  // refresh
-
-            btn.innerHTML = originalHTML;  // restore text
-            btn.disabled = false;  // enable
-            showToast('Data reloaded successfully!');  // notify
+        function closeModal() {
+            const modal = document.getElementById('ticketModal');
+            modal.classList.remove('is-visible');
+            document.body.classList.remove('modal-open');
         }
 
-        function switchTab(tabName) {  // tab switching function
-            saveAppState();  // save state when switching tabs
-            document.querySelectorAll('.tab-content').forEach(content => {  // hide all tabs
-                content.classList.remove('active');
-            });
-            
-            document.querySelectorAll('.tab-btn').forEach(btn => {  // remove active from buttons
-                btn.classList.remove('active');
-            });
-            
-            if (tabName === 'overview') {  // show overview tab
-                document.getElementById('overviewContent').classList.add('active');
-                document.getElementById('overviewTab').classList.add('active');
-            } else if (tabName === 'client') {  // show client tab
-                document.getElementById('clientContent').classList.add('active');
-                document.getElementById('clientTab').classList.add('active');
-                loadClientList();  // load client list when tab is opened
+        window.onclick = function(event) {
+            const modal = document.getElementById('ticketModal');
+            if (event.target === modal) {
+                closeModal();
             }
         }
 
-        async function loadClientList() {  // load client list
-            try {  // attempt to load
-                const response = await fetch('/api/all-clients');  // fetch clients
-                const data = await response.json();  // parse json
-                
-                const selectElement = document.getElementById('clientSelect');  // get dropdown
-                selectElement.innerHTML = '<option value="">-- Select a Client --</option>';  // reset options
-                
-                data.client_ids.forEach(clientId => {  // add each client
-                    const option = document.createElement('option');  // create option
-                    option.value = clientId;  // set value
-                    option.textContent = clientId;  // set text
-                    selectElement.appendChild(option);  // add to dropdown
-                });
-            } catch (error) {  // handle errors
-                console.error('Error loading clients:', error);  // log error
-                showToast('Failed to load client list', 'error');  // show error
-            }
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3000);
         }
 
-        async function loadClientData() {  // load client data with charts
-            saveAppState();  // save state when loading client data
-            const clientId = document.getElementById('clientSelect').value;  // get selected client
+        function toggleAutoRefresh() {
+            const toggle = document.getElementById('auto-refresh-toggle');
+            const intervalInput = document.getElementById('refresh-interval');
             
-            if (!clientId) {  // no client selected
-                document.getElementById('clientStats').style.display = 'none';  // hide stats
-                document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
-                document.getElementById('noClientData').style.display = 'none';  // hide no data
-                return;  // done
+            if (toggle.checked) {
+                intervalInput.disabled = false;
+                const seconds = parseInt(intervalInput.value);
+                startAutoRefresh(seconds);
+            } else {
+                intervalInput.disabled = true;
+                stopAutoRefresh();
             }
             
-            try {  // attempt to load
-                const response = await fetch(`/api/client-tickets-7days?client_id=${clientId}`);  // fetch client data
-                const data = await response.json();  // parse json
-                
-                if (!data.success) {  // request failed
-                    document.getElementById('clientStats').style.display = 'none';  // hide stats
-                    document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
-                    document.getElementById('noClientData').style.display = 'block';  // show no data
-                    showToast('Failed to load client data', 'error');  // show error
-                    return;  // done
+            saveState();
+        }
+
+        function updateRefreshInterval() {
+            const toggle = document.getElementById('auto-refresh-toggle');
+            if (toggle.checked) {
+                const seconds = parseInt(document.getElementById('refresh-interval').value);
+                startAutoRefresh(seconds);
+            }
+            saveState();
+        }
+
+        let refreshIntervalId = 0;
+
+        function startAutoRefresh(seconds) {
+            stopAutoRefresh();
+            
+            refreshIntervalId++;
+            const currentId = refreshIntervalId;
+            
+            refreshInterval = setInterval(() => {
+                if (currentId !== refreshIntervalId) {
+                    clearInterval(refreshInterval);
+                    return;
                 }
                 
-                if (data.total_tickets === 0) {  // no tickets found
-                    document.getElementById('clientStats').style.display = 'none';  // hide stats
-                    document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
-                    document.getElementById('noClientData').style.display = 'block';  // show no data
-                    return;  // done
-                }
+                isFirstLoad = false;
+                loadData();
                 
-                document.getElementById('noClientData').style.display = 'none';  // hide no data
-                document.getElementById('clientStats').style.display = 'grid';  // show stats
-                document.getElementById('clientChartsSection').style.display = 'flex';  // show charts
-                
-                // Update stat cards with 7-day data
-                document.getElementById('clientCompleted').textContent = data.all_time_stats.completed;  // update completed
-                document.getElementById('clientProcessing').textContent = data.all_time_stats.processing;  // update processing
-                document.getElementById('clientFailed').textContent = data.all_time_stats.failed;  // update failed
-                document.getElementById('clientCallback').textContent = data.all_time_stats.callback;  // update callback
-                
-                // Create graphs with 7-day data
-                createClientCharts(data.seven_day_data);  // create charts with 7-day data
-                
-                showToast(`Loaded ${data.total_tickets} tickets for ${clientId} (past 7 days)`, 'success');  // show success
-            } catch (error) {  // handle errors
-                console.error('Error loading client data:', error);  // log error
-                showToast('Failed to load client data', 'error');  // show error
-                document.getElementById('clientStats').style.display = 'none';  // hide stats
-                document.getElementById('clientChartsSection').style.display = 'none';  // hide charts
-                document.getElementById('noClientData').style.display = 'block';  // show no data
-            }
-        }
-
-        function createClientCharts(sevenDayData) {  // build client charts
-            if (clientCompletedChart) clientCompletedChart.destroy();  // clear old chart
-            if (clientProcessingChart) clientProcessingChart.destroy();  // clear old chart
-            if (clientFailedChart) clientFailedChart.destroy();  // clear old chart
-            if (clientCallbackChart) clientCallbackChart.destroy();  // clear old chart
-
-            const dates = sevenDayData.dates;  // get date labels
-            const completedData = sevenDayData.completed;  // completed counts
-            const processingData = sevenDayData.processing;  // processing counts
-            const failedData = sevenDayData.failed;  // failed counts
-            const callbackData = sevenDayData.callback;  // callback counts
-
-            const chartConfig = {  // chart settings
-                responsive: true, maintainAspectRatio: false,
-                layout: {padding: {top: 40, bottom: 20, left: 20, right: 20}},
-                plugins: {
-                    legend: {display: false},
-                    tooltip: {
-                        backgroundColor: '#111827', padding: 16,
-                        titleFont: {size: 15, weight: 'bold', family: 'Inter'},
-                        bodyFont: {size: 14, family: 'Inter'},
-                        cornerRadius: 12, displayColors: false,
-                        callbacks: {label: (context) => `${context.parsed.y} tickets`}
-                    },
-                    datalabels: {
-                        anchor: 'end', align: 'end', offset: -5,
-                        formatter: (value) => value > 0 ? value : '',
-                        font: {weight: 'bold', size: 16, family: 'Inter'},
-                        color: '#111827'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true, grace: '5%',
-                        ticks: {stepSize: 1, font: {size: 14, family: 'Inter', weight: '600'}, color: '#6b7280'},
-                        grid: {color: '#f3f4f6', drawBorder: false},
-                        border: {display: false}
-                    },
-                    x: {
-                        ticks: {
-                            font: {size: 13, family: 'Inter', weight: '600'}, 
-                            color: '#111827', 
-                            maxRotation: 45,
-                            minRotation: 45,
-                            autoSkip: false
-                        },
-                        grid: {display: false}, 
-                        border: {display: false}
+                const activeTab = document.querySelector('.tab-btn.active').textContent;
+                if (activeTab.includes('Client')) {
+                    const clientId = document.getElementById('client-dropdown').value;
+                    if (clientId) {
+                        loadClientData();
                     }
                 }
+            }, seconds * 1000);
+            
+            showToast('Auto-refresh enabled', 'success');
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+            refreshIntervalId++;
+        }
+
+        window.addEventListener('beforeunload', () => {
+            stopAutoRefresh();
+            // Clear all counter animations
+            Object.values(activeCounterAnimations).forEach(timer => clearInterval(timer));
+        });
+
+        function saveState() {
+            const activeBtn = document.querySelector('.tab-btn.active');
+            let activeTab = 'overview';
+            if (activeBtn) {
+                if (activeBtn.textContent.includes('Client')) activeTab = 'client';
+                else if (activeBtn.textContent.includes('Range')) activeTab = 'range';
+            }
+            
+            const state = {
+                activeTab: activeTab,
+                selectedDate: document.getElementById('date-picker').value,
+                selectedClient: document.getElementById('client-dropdown').value,
+                autoRefreshEnabled: document.getElementById('auto-refresh-toggle').checked,
+                refreshInterval: document.getElementById('refresh-interval').value,
+                rangeStartDate: document.getElementById('range-start-date')?.value,
+                rangeEndDate: document.getElementById('range-end-date')?.value,
+                selectedClients: Array.from(selectedClients)
             };
-
-            const ctx1 = document.getElementById('clientCompletedChart').getContext('2d');  // get canvas
-            clientCompletedChart = new Chart(ctx1, {type: 'bar', data: {labels: dates, datasets: [{data: completedData, backgroundColor: '#10b981', borderRadius: 12, hoverBackgroundColor: '#059669', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
-
-            const ctx2 = document.getElementById('clientProcessingChart').getContext('2d');  // get canvas
-            clientProcessingChart = new Chart(ctx2, {type: 'bar', data: {labels: dates, datasets: [{data: processingData, backgroundColor: '#f59e0b', borderRadius: 12, hoverBackgroundColor: '#d97706', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
-
-            const ctx3 = document.getElementById('clientFailedChart').getContext('2d');  // get canvas
-            clientFailedChart = new Chart(ctx3, {type: 'bar', data: {labels: dates, datasets: [{data: failedData, backgroundColor: '#dc2626', borderRadius: 12, hoverBackgroundColor: '#b91c1c', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
-
-            const ctx4 = document.getElementById('clientCallbackChart').getContext('2d');  // get canvas
-            clientCallbackChart = new Chart(ctx4, {type: 'bar', data: {labels: dates, datasets: [{data: callbackData, backgroundColor: '#8b5cf6', borderRadius: 12, hoverBackgroundColor: '#7c3aed', barPercentage: 0.6, categoryPercentage: 0.9}]}, options: chartConfig, plugins: [ChartDataLabels]});
+            localStorage.setItem('dashboardState', JSON.stringify(state));
         }
 
-        document.getElementById('datePicker').addEventListener('change', () => {  // watch date changes
-            saveAppState();  // save state when date changes
-            updateDashboard();  // reload dashboard
-        });
-
-        window.onload = async function() {  // on page load
-            initializeDatePicker();  // setup date
-            await updateDashboard();  // load data
-        };
-        
-        // Restore state when page loads
-        window.addEventListener('load', () => {  // on page load event
-            setTimeout(() => {  // wait briefly for dom
-                restoreAppState();  // restore saved state
-            }, 100);
-        });
+        function restoreState() {
+            try {
+                const savedState = localStorage.getItem('dashboardState');
+                if (!savedState) return;
+                
+                const state = JSON.parse(savedState);
+                
+                if (state.selectedDate) {
+                    currentDate = state.selectedDate;
+                    document.getElementById('date-picker').value = state.selectedDate;
+                }
+                
+                if (state.autoRefreshEnabled) {
+                    document.getElementById('auto-refresh-toggle').checked = true;
+                    document.getElementById('refresh-interval').disabled = false;
+                }
+                
+                if (state.refreshInterval) {
+                    document.getElementById('refresh-interval').value = state.refreshInterval;
+                }
+                
+                if (state.activeTab === 'client') {
+                    setTimeout(() => {
+                        switchTab('client');
+                        if (state.selectedClient) {
+                            document.getElementById('client-dropdown').value = state.selectedClient;
+                            loadClientData();
+                        }
+                    }, 500);
+                } else if (state.activeTab === 'range') {
+                    setTimeout(() => {
+                        switchTab('range');
+                        if (state.rangeStartDate) {
+                            document.getElementById('range-start-date').value = state.rangeStartDate;
+                        }
+                        if (state.rangeEndDate) {
+                            document.getElementById('range-end-date').value = state.rangeEndDate;
+                        }
+                        if (state.selectedClients && Array.isArray(state.selectedClients)) {
+                            selectedClients = new Set(state.selectedClients);
+                            updateSelectedClientsText();
+                        }
+                    }, 500);
+                }
+                
+                if (state.autoRefreshEnabled && state.refreshInterval) {
+                    const interval = parseInt(state.refreshInterval);
+                    if (!isNaN(interval)) {
+                        startAutoRefresh(interval);
+                    }
+                }
+                
+            } catch (e) {
+                console.error('Error restoring state:', e);
+                localStorage.removeItem('dashboardState');
+            }
+        }
     </script>
 </body>
 </html>
