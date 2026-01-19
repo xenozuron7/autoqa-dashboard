@@ -5,7 +5,7 @@ from pathlib import Path
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -15,12 +15,14 @@ import redis.asyncio as aioredis
 from datetime import datetime, timedelta
 from dateutil import parser
 import json
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Callable, Any
 import logging
 import traceback
 import asyncio
+from functools import wraps
+from collections import defaultdict
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,1189 +34,1505 @@ logger = logging.getLogger(__name__)
 mongo_client = None
 db = None
 collection = None
+materialized_view = None
 redis_client = None
 scheduler = AsyncIOScheduler()
 
+# Constants
+MAIN_COLLECTION_NAME = "auto_qa_results_demo"
+VIEW_COLLECTION_NAME = "ticket_summary_materialized_view"
+DEFAULT_CACHE_TTL = 300
+VIEW_CACHE_TTL = 600
+CLIENT_LIST_CACHE_TTL = 3600
+CLIENT_LIST_DEFAULT_LIMIT = 1000
+INCREMENTAL_REFRESH_DAYS = 7
 
-def parse_date_safe(date_str: str = None) -> datetime:
-    """Parse date with validation and fallback to today"""
-    if not date_str:
-        return datetime.now()
+# Rate limiting
+RATE_LIMIT_REQUESTS = 100
+RATE_LIMIT_WINDOW = 60
+rate_limit_storage = defaultdict(list)
+
+# Cache metrics
+cache_metrics = {
+    "hits": 0,
+    "misses": 0,
+    "total_requests": 0,
+    "hit_rate": 0.0,
+    "by_endpoint": defaultdict(lambda: {"hits": 0, "misses": 0})
+}
+
+# ============================================================================
+# RATE LIMITING MIDDLEWARE
+# ============================================================================
+
+async def check_rate_limit(request: Request) -> bool:
+    """Check if request exceeds rate limit"""
+    client_ip = request.client.host
+    current_time = time.time()
+    
+    rate_limit_storage[client_ip] = [
+        timestamp for timestamp in rate_limit_storage[client_ip]
+        if current_time - timestamp < RATE_LIMIT_WINDOW
+    ]
+    
+    if len(rate_limit_storage[client_ip]) >= RATE_LIMIT_REQUESTS:
+        return False
+    
+    rate_limit_storage[client_ip].append(current_time)
+    return True
+
+def rate_limit(func: Callable):
+    """Rate limiting decorator"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        request = kwargs.get('request') or (args[0] if args and isinstance(args[0], Request) else None)
+        
+        if request and not await check_rate_limit(request):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "Rate limit exceeded",
+                    "message": f"Maximum {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds"
+                }
+            )
+        
+        return await func(*args, **kwargs)
+    return wrapper
+
+# ============================================================================
+# DATA VALIDATION & NORMALIZATION (Handle structured + unstructured data)
+# ============================================================================
+
+def safe_get_field(document: dict, field: str, default=None, expected_type=None):
+    """
+    Safely extract field from document with type checking
+    Handles missing fields, wrong types, nested data
+    """
+    try:
+        value = document.get(field, default)
+        
+        if value is None:
+            return default
+        
+        if expected_type == str:
+            return str(value)
+        elif expected_type == int:
+            return int(value) if isinstance(value, (int, float)) else default
+        elif expected_type == datetime:
+            if isinstance(value, datetime):
+                return value
+            elif isinstance(value, str):
+                return parser.parse(value)
+            else:
+                return default
+        
+        return value
+        
+    except Exception as e:
+        logger.warning(f"Failed to extract {field}: {e}")
+        return default
+
+def normalize_ticket_document(raw_doc: dict) -> dict:
+    """
+    Normalize unstructured/semi-structured ticket document
+    Handles missing fields, wrong types, nested structures
+    """
+    try:
+        # Extract created_at
+        created_at = None
+        
+        if 'created_at' in raw_doc:
+            created_at_raw = raw_doc['created_at']
+            
+            if isinstance(created_at_raw, datetime):
+                created_at = created_at_raw
+            elif isinstance(created_at_raw, str):
+                try:
+                    created_at = parser.parse(created_at_raw)
+                except:
+                    pass
+            elif isinstance(created_at_raw, dict) and '$date' in created_at_raw:
+                try:
+                    created_at = parser.parse(created_at_raw['$date'])
+                except:
+                    pass
+        
+        if created_at is None:
+            if 'updated_at' in raw_doc:
+                created_at = safe_get_field(raw_doc, 'updated_at', datetime.now(), datetime)
+            else:
+                created_at = datetime.now()
+        
+        # Extract client_id
+        client_id = safe_get_field(raw_doc, 'client_id', 'unknown', str)
+        
+        if client_id == 'unknown' and 'client' in raw_doc:
+            if isinstance(raw_doc['client'], dict):
+                client_id = safe_get_field(raw_doc['client'], 'id', 'unknown', str)
+            elif isinstance(raw_doc['client'], str):
+                client_id = raw_doc['client']
+        
+        # Extract status fields
+        auto_qa_status = safe_get_field(raw_doc, 'auto_qa_status', '', str)
+        request_status = safe_get_field(raw_doc, 'request_status', '', str)
+        
+        # Check nested status
+        if not auto_qa_status and 'qa' in raw_doc:
+            if isinstance(raw_doc['qa'], dict):
+                auto_qa_status = safe_get_field(raw_doc['qa'], 'status', '', str)
+        
+        if not request_status and 'request' in raw_doc:
+            if isinstance(raw_doc['request'], dict):
+                request_status = safe_get_field(raw_doc['request'], 'status', '', str)
+        
+        # Extract ticket_id
+        ticket_id = safe_get_field(raw_doc, 'ticket_id', None, str)
+        if not ticket_id:
+            ticket_id = safe_get_field(raw_doc, '_id', 'unknown', str)
+        
+        return {
+            'ticket_id': ticket_id,
+            'client_id': client_id,
+            'created_at': created_at,
+            'auto_qa_status': auto_qa_status,
+            'request_status': request_status,
+            'normalized': True
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to normalize document: {e}")
+        return {
+            'ticket_id': 'error',
+            'client_id': 'unknown',
+            'created_at': datetime.now(),
+            'auto_qa_status': '',
+            'request_status': '',
+            'normalized': False
+        }
+
+def parse_ticket_status(ticket: dict) -> str:
+    """Determine ticket status from auto_qa_status"""
+    auto_qa_status = str(ticket.get('auto_qa_status', '')).lower()
+    request_status = str(ticket.get('request_status', '')).lower()
+    
+    if auto_qa_status == 'complete':
+        return 'completed'
+    elif auto_qa_status == 'callback':
+        return 'callback'
+    elif auto_qa_status == 'failed' or request_status == 'failed':
+        return 'failed'
+    return 'processing'
+
+def extract_date(ticket: dict) -> datetime:
+    """Extract and normalize date from ticket"""
+    date_obj = ticket.get('created_at') or ticket.get('updated_at')
+    
+    if not date_obj:
+        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if isinstance(date_obj, datetime):
+        return date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if isinstance(date_obj, str):
+        try:
+            return parser.parse(date_obj).replace(hour=0, minute=0, second=0, microsecond=0)
+        except:
+            pass
+    
+    if isinstance(date_obj, dict) and '$date' in date_obj:
+        try:
+            return parser.parse(date_obj['$date']).replace(hour=0, minute=0, second=0, microsecond=0)
+        except:
+            pass
+    
+    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def get_date_range(end_date: datetime, days: int = 7) -> tuple:
+    """Get start and end datetime for date range"""
+    start = (end_date - timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = end_date.replace(hour=23, minute=59, second=59, microsecond=999)
+    return start, end
+
+def format_date_labels(end_date: datetime, days: int = 7) -> List[str]:
+    """Generate date labels for charts"""
+    return [(end_date - timedelta(days=i)).strftime('%b %d, %Y') for i in range(days-1, -1, -1)]
+
+def init_stats_dict() -> dict:
+    """Initialize empty stats dictionary"""
+    return {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}
+
+# ============================================================================
+# DATABASE READ OPERATIONS (ONLY collection.find() - NO AGGREGATION)
+# ============================================================================
+
+async def fetch_tickets_raw(
+    match_conditions: dict,
+    projection: dict = None,
+    limit: int = 10000,
+    sort: List[tuple] = None
+) -> List[dict]:
+    """
+    Fetch tickets using ONLY collection.find()
+    NO aggregation, NO distinct - pure find query
+    """
+    try:
+        query = collection.find(match_conditions, projection)
+        
+        if sort:
+            query = query.sort(sort)
+        
+        if limit:
+            query = query.limit(limit)
+        
+        # Fetch raw documents from database
+        tickets_data = await query.to_list(length=limit)
+        
+        logger.info(f"Fetched {len(tickets_data)} raw tickets using collection.find()")
+        return tickets_data
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch tickets: {e}")
+        return []
+
+async def fetch_view_raw(
+    match_conditions: dict,
+    projection: dict = None,
+    limit: int = 10000,
+    sort: List[tuple] = None
+) -> List[dict]:
+    """
+    Fetch from materialized view using ONLY .find()
+    NO aggregation
+    """
+    if materialized_view is None:
+        return []
     
     try:
-        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        query = materialized_view.find(match_conditions, projection)
         
-        # Validate reasonable date range
-        if parsed < datetime(2020, 1, 1):
-            logger.warning(f"Date too old: {date_str}, using today")
-            return datetime.now()
+        if sort:
+            query = query.sort(sort)
         
-        if parsed > datetime.now():
-            logger.warning(f"Future date: {date_str}, using today")
-            return datetime.now()
+        if limit:
+            query = query.limit(limit)
         
-        return parsed
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Invalid date format: {date_str}, using today. Error: {e}")
-        return datetime.now()
+        view_data = await query.to_list(length=limit)
+        
+        logger.info(f"Fetched {len(view_data)} raw entries using view.find()")
+        return view_data
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch from view: {e}")
+        return []
 
+# ============================================================================
+# IN-MEMORY TRANSFORMATION FUNCTIONS (PURE - NO DATABASE ACCESS)
+# ============================================================================
 
-def get_last_n_days_labels_from_date(end_date, n):
-    """Generate date labels for charts (e.g., 'Jan 05, 2026')"""
-    labels = []
-    for i in range(n-1, -1, -1):
-        date = end_date - timedelta(days=i)
-        labels.append(date.strftime('%b %d, %Y'))
-    return labels
-
-
-async def ensure_indexes():
+def normalize_ticket_list(raw_tickets: List[dict]) -> List[dict]:
     """
-    Ensure required indexes exist.
-    Handles conflicts by using existing indexes or recreating if needed.
+    Normalize list of tickets handling structured/unstructured data
+    Returns new list of normalized tickets
     """
-    if collection is None:
-        logger.error("Collection not initialized, skipping index creation")
+    normalized = []
+    for ticket in raw_tickets:
+        normalized.append(normalize_ticket_document(ticket))
+    return normalized
+
+def count_by_status(data: List[dict]) -> Dict[str, int]:
+    """Count items by status in memory"""
+    counts = init_stats_dict()
+    
+    for item in data:
+        status = parse_ticket_status(item)
+        if status in counts:
+            counts[status] += 1
+    
+    return counts
+
+def count_by_client_and_status(data: List[dict]) -> Dict[str, Dict[str, int]]:
+    """
+    Count items by client and status in memory
+    Returns: {client_id: {status: count}}
+    """
+    client_counts = {}
+    
+    for item in data:
+        client_id = str(item.get('client_id', 'unknown'))
+        status = parse_ticket_status(item)
+        
+        if client_id not in client_counts:
+            client_counts[client_id] = init_stats_dict()
+        
+        client_counts[client_id][status] += 1
+    
+    return client_counts
+
+def count_by_date_and_status(data: List[dict], start_date: datetime, days: int) -> Dict[str, Dict[str, int]]:
+    """
+    Count items by date and status in memory
+    Returns: {date_str: {status: count}}
+    """
+    daily_counts = {}
+    
+    for i in range(days):
+        date = start_date + timedelta(days=i)
+        date_str = date.strftime('%Y-%m-%d')
+        daily_counts[date_str] = init_stats_dict()
+    
+    for item in data:
+        item_date = extract_date(item)
+        date_str = item_date.strftime('%Y-%m-%d')
+        
+        if date_str in daily_counts:
+            status = parse_ticket_status(item)
+            if status in daily_counts[date_str]:
+                daily_counts[date_str][status] += 1
+    
+    return daily_counts
+
+def filter_by_status(data: List[dict], target_status: str) -> List[dict]:
+    """Filter in-memory data by status"""
+    return [item for item in data if parse_ticket_status(item) == target_status]
+
+def filter_by_client(data: List[dict], client_id: str) -> List[dict]:
+    """Filter in-memory data by client_id"""
+    return [item for item in data if str(item.get('client_id', '')) == str(client_id)]
+
+def filter_by_date_range(data: List[dict], start: datetime, end: datetime) -> List[dict]:
+    """Filter in-memory data by date range"""
+    filtered = []
+    for item in data:
+        item_date = extract_date(item)
+        if start <= item_date <= end:
+            filtered.append(item)
+    return filtered
+
+def sort_by_date(data: List[dict], descending: bool = True) -> List[dict]:
+    """Sort in-memory data by date"""
+    sorted_data = data.copy()
+    sorted_data.sort(key=lambda x: extract_date(x), reverse=descending)
+    return sorted_data
+
+def extract_unique_values(data: List[dict], field: str) -> List[str]:
+    """Extract unique values for a field from in-memory data"""
+    unique_values = set()
+    for item in data:
+        value = item.get(field)
+        if value is not None:
+            unique_values.add(str(value))
+    return sorted(list(unique_values))
+
+def paginate_data(data: List[Any], offset: int, limit: int) -> List[Any]:
+    """Paginate in-memory data"""
+    return data[offset:offset + limit]
+
+def search_in_list(items: List[str], query: str) -> List[str]:
+    """Search for items matching query"""
+    query_lower = query.lower()
+    return [item for item in items if query_lower in item.lower()]
+
+# ============================================================================
+# CACHING LAYER WITH METRICS
+# ============================================================================
+
+async def get_cache(key: str, endpoint: str = "unknown") -> Optional[dict]:
+    """Retrieve data from Redis cache with metrics"""
+    if redis_client is None:
+        cache_metrics["misses"] += 1
+        cache_metrics["total_requests"] += 1
+        cache_metrics["by_endpoint"][endpoint]["misses"] += 1
+        return None
+    
+    try:
+        data = await redis_client.get(key)
+        cache_metrics["total_requests"] += 1
+        
+        if data:
+            cache_metrics["hits"] += 1
+            cache_metrics["by_endpoint"][endpoint]["hits"] += 1
+            cache_metrics["hit_rate"] = (cache_metrics["hits"] / cache_metrics["total_requests"]) * 100
+            logger.info(f"CACHE HIT: {key} (endpoint: {endpoint})")
+            return json.loads(data)
+        else:
+            cache_metrics["misses"] += 1
+            cache_metrics["by_endpoint"][endpoint]["misses"] += 1
+            cache_metrics["hit_rate"] = (cache_metrics["hits"] / cache_metrics["total_requests"]) * 100
+            return None
+    except Exception as e:
+        logger.error(f"Cache error: {e}")
+        cache_metrics["misses"] += 1
+        cache_metrics["total_requests"] += 1
+        return None
+
+async def set_cache(key: str, data: dict, expire: int = DEFAULT_CACHE_TTL):
+    """Store data in Redis cache"""
+    if redis_client is None:
+        return
+    try:
+        await redis_client.setex(key, expire, json.dumps(data))
+    except Exception as e:
+        logger.error(f"Cache error: {e}")
+
+async def clear_cache_pattern(pattern: str):
+    """Clear cache by pattern with batch operations"""
+    if redis_client is None:
+        return
+    try:
+        keys = await redis_client.keys(pattern)
+        if keys:
+            pipe = redis_client.pipeline()
+            for key in keys:
+                pipe.delete(key)
+            await pipe.execute()
+            logger.info(f"Cleared {len(keys)} cache keys")
+    except Exception as e:
+        logger.error(f"Cache error: {e}")
+
+# ============================================================================
+# CACHE WARMING
+# ============================================================================
+
+async def warm_cache():
+    """Pre-populate cache with hot data on startup"""
+    if mongo_client is None or redis_client is None:
+        logger.warning("Cannot warm cache - connections not ready")
         return
     
     try:
-        # Get existing indexes
-        existing_indexes = await collection.list_indexes().to_list(length=None)
-        existing_keys = {
-            tuple(sorted(idx.get('key', {}).items())): idx.get('name')
-            for idx in existing_indexes
-        }
+        logger.info("Starting cache warming...")
+        start_time = time.time()
         
-        # Define required indexes with background creation
-        required_indexes = [
-            {
-                'keys': [("created_at", 1)],
-                'name': "created_at_idx",
-                'background': True
-            },
-            {
-                'keys': [("client_id", 1)],
-                'name': "client_id_idx",
-                'background': True
-            },
-            {
-                'keys': [("created_at", 1), ("client_id", 1)],
-                'name': "created_client_idx",
-                'background': True
-            },
-            {
-                'keys': [("created_at", 1), ("auto_qa_status", 1)],
-                'name': "created_status_idx",
-                'background': True
-            },
-            {
-                'keys': [("client_id", 1), ("created_at", -1)],
-                'name': "client_created_desc_idx",
-                'background': True
-            }
-        ]
-        
-        # Create or verify each index
-        for idx_spec in required_indexes:
-            keys = idx_spec['keys']
-            name = idx_spec['name']
-            key_tuple = tuple(sorted(keys))
-            
-            # Check if index with same keys exists
-            if key_tuple in existing_keys:
-                existing_name = existing_keys[key_tuple]
-                if existing_name != name:
-                    logger.info(f"ℹ️ Index exists as '{existing_name}', using existing")
-                else:
-                    logger.info(f"✅ Index '{name}' verified")
-            else:
-                # Create new index
-                try:
-                    await collection.create_index(
-                        keys,
-                        name=name,
-                        background=idx_spec.get('background', True)
-                    )
-                    logger.info(f"✅ Created index '{name}'")
-                except Exception as e:
-                    logger.warning(f"⚠️ Could not create index '{name}': {e}")
-        
-        logger.info("✅ All indexes ready")
-        
-    except Exception as e:
-        logger.error(f"⚠️ Index verification failed: {e}")
-
-
-async def warm_cache_today():
-    """Pre-warm cache for today's data (called by scheduler)"""
-    try:
         today = datetime.now().strftime('%Y-%m-%d')
-        logger.info(f"🔥 Warming cache for {today}")
         
-        # Trigger cache by calling the endpoint logic
-        if collection is not None:
-            cache_key = f"ticket_data:{today}"
-            cached = await get_cache(cache_key)
+        # Warm today's data
+        if materialized_view is not None:
+            raw_view_data = await fetch_view_raw(
+                match_conditions={"date": today},
+                projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
+                limit=5000,
+                sort=[("client_id", 1)]
+            )
             
-            if not cached:
-                # Manually execute query to warm cache
-                target_date = datetime.strptime(today, "%Y-%m-%d")
-                start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_of_day = start_of_day + timedelta(days=1)
+            if raw_view_data:
+                client_stats = {}
+                for entry in raw_view_data:
+                    client_id = entry.get("client_id")
+                    status = entry.get("status")
+                    count = entry.get("count", 0)
+                    
+                    if client_id not in client_stats:
+                        client_stats[client_id] = init_stats_dict()
+                    
+                    if status in client_stats[client_id]:
+                        client_stats[client_id][status] += count
                 
-                pipeline = [
-                    {"$match": {"created_at": {"$gte": start_of_day, "$lt": end_of_day}}},
-                    {"$limit": 1}
-                ]
+                sorted_clients = sorted(client_stats.keys())[:100]
+                response_data = {
+                    'client_ids': sorted_clients,
+                    'completed': [client_stats[c]['completed'] for c in sorted_clients],
+                    'processing': [client_stats[c]['processing'] for c in sorted_clients],
+                    'failed': [client_stats[c]['failed'] for c in sorted_clients],
+                    'callback': [client_stats[c]['callback'] for c in sorted_clients]
+                }
+                await set_cache(f"ticket_data:{today}", response_data, expire=VIEW_CACHE_TTL)
+                logger.info("Warmed: Today's ticket data")
+        
+        # Warm client list
+        await refresh_client_list_background()
+        logger.info("Warmed: Client list")
+        
+        # Warm last 3 days
+        for i in range(1, 4):
+            past_date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            if materialized_view is not None:
+                raw_view_data = await fetch_view_raw(
+                    match_conditions={"date": past_date},
+                    projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
+                    limit=5000,
+                    sort=[("client_id", 1)]
+                )
                 
-                cursor = collection.aggregate(pipeline)
-                await cursor.to_list(length=1)
-                
-                logger.info(f"✅ Cache warmed for {today}")
+                if raw_view_data:
+                    client_stats = {}
+                    for entry in raw_view_data:
+                        client_id = entry.get("client_id")
+                        status = entry.get("status")
+                        count = entry.get("count", 0)
+                        
+                        if client_id not in client_stats:
+                            client_stats[client_id] = init_stats_dict()
+                        
+                        if status in client_stats[client_id]:
+                            client_stats[client_id][status] += count
+                    
+                    sorted_clients = sorted(client_stats.keys())[:100]
+                    response_data = {
+                        'client_ids': sorted_clients,
+                        'completed': [client_stats[c]['completed'] for c in sorted_clients],
+                        'processing': [client_stats[c]['processing'] for c in sorted_clients],
+                        'failed': [client_stats[c]['failed'] for c in sorted_clients],
+                        'callback': [client_stats[c]['callback'] for c in sorted_clients]
+                    }
+                    await set_cache(f"ticket_data:{past_date}", response_data, expire=VIEW_CACHE_TTL)
+        
+        logger.info("Warmed: Last 3 days data")
+        
+        duration = time.time() - start_time
+        logger.info(f"Cache warming completed in {duration:.2f}s")
+        
     except Exception as e:
         logger.error(f"Cache warming failed: {e}")
+        traceback.print_exc()
 
+# ============================================================================
+# DATABASE HELPERS
+# ============================================================================
 
-app = FastAPI(title="AutoQA Dashboard API", version="1.0.0")
+def require_db(func: Callable):
+    """Decorator to check database availability and handle errors"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        if mongo_client is None:
+            return JSONResponse(status_code=503, content={"error": "Database unavailable"})
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {e}")
+            traceback.print_exc()
+            return JSONResponse(status_code=500, content={"error": str(e)})
+    return wrapper
 
-# Performance: Enable response compression
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+def build_date_match(start: datetime, end: datetime) -> dict:
+    """Build date match query"""
+    return {"created_at": {"$gte": start, "$lte": end}}
 
+# ============================================================================
+# CLIENT LIST WITH SEARCH
+# ============================================================================
+
+async def refresh_client_list_background():
+    """Background task - fetch all clients using only find()"""
+    if collection is None:
+        return
+    
+    try:
+        logger.info("Background: Refreshing client list...")
+        
+        if materialized_view is not None:
+            # Fetch all view entries using only find()
+            raw_view_data = await fetch_view_raw(
+                match_conditions={},
+                projection={"client_id": 1, "_id": 0},
+                limit=50000,
+                sort=None
+            )
+            
+            # Extract unique clients in memory
+            all_clients = extract_unique_values(raw_view_data, "client_id")
+            total_count = len(all_clients)
+            clients = all_clients[:CLIENT_LIST_DEFAULT_LIMIT]
+        else:
+            # Fetch all tickets using only find() and extract clients in memory
+            raw_tickets = await fetch_tickets_raw(
+                match_conditions={},
+                projection={"client_id": 1, "_id": 0},
+                limit=50000,
+                sort=None
+            )
+            
+            # Extract unique clients in memory
+            all_clients = extract_unique_values(raw_tickets, "client_id")
+            total_count = len(all_clients)
+            clients = all_clients[:CLIENT_LIST_DEFAULT_LIMIT]
+        
+        response_data = {
+            "client_ids": clients,
+            "total": total_count,
+            "limit": CLIENT_LIST_DEFAULT_LIMIT,
+            "offset": 0,
+            "has_more": len(clients) < total_count
+        }
+        
+        if redis_client is not None:
+            cache_key = f"all_clients:{CLIENT_LIST_DEFAULT_LIMIT}:0:all"
+            await set_cache(cache_key, response_data, expire=CLIENT_LIST_CACHE_TTL)
+            await set_cache("client_count:all", total_count, expire=CLIENT_LIST_CACHE_TTL)
+            await set_cache("all_clients_raw_list", all_clients, expire=CLIENT_LIST_CACHE_TTL)
+        
+        logger.info(f"Background: Cached {len(clients)}/{total_count} clients")
+        
+    except Exception as e:
+        logger.error(f"Background client refresh failed: {e}")
+
+# ============================================================================
+# MATERIALIZED VIEW (Using ONLY collection.find() + in-memory aggregation)
+# ============================================================================
+
+async def refresh_materialized_view_incremental():
+    """
+    Incremental refresh using ONLY collection.find()
+    All aggregation done in memory
+    """
+    if collection is None or materialized_view is None:
+        logger.warning("Collections not initialized")
+        return
+    
+    try:
+        start_time = time.time()
+        logger.info(f"Starting incremental view refresh (last {INCREMENTAL_REFRESH_DAYS} days)...")
+        
+        if collection.name != MAIN_COLLECTION_NAME or materialized_view.name != VIEW_COLLECTION_NAME:
+            logger.error("SAFETY: Wrong collection names")
+            return
+        
+        cutoff_date = datetime.now() - timedelta(days=INCREMENTAL_REFRESH_DAYS)
+        
+        # STEP 1: Fetch using ONLY collection.find()
+        match_conditions = {"created_at": {"$gte": cutoff_date}}
+        projection = {
+            "created_at": 1,
+            "updated_at": 1,
+            "client_id": 1,
+            "client": 1,
+            "auto_qa_status": 1,
+            "request_status": 1,
+            "qa": 1,
+            "request": 1,
+            "_id": 0
+        }
+        
+        raw_tickets = await fetch_tickets_raw(
+            match_conditions=match_conditions,
+            projection=projection,
+            limit=None
+        )
+        
+        logger.info(f"Fetched {len(raw_tickets)} raw tickets using collection.find()")
+        
+        # STEP 2: Normalize in memory
+        normalized_tickets = normalize_ticket_list(raw_tickets)
+        
+        # STEP 3: Aggregate in memory (not in database)
+        aggregated_data_dict = {}
+        
+        for ticket in normalized_tickets:
+            date_str = extract_date(ticket).strftime('%Y-%m-%d')
+            client_id = str(ticket.get('client_id', 'unknown'))
+            status = parse_ticket_status(ticket)
+            
+            key = (date_str, client_id, status)
+            
+            if key not in aggregated_data_dict:
+                aggregated_data_dict[key] = {
+                    "date": date_str,
+                    "client_id": client_id,
+                    "status": status,
+                    "count": 0
+                }
+            
+            aggregated_data_dict[key]["count"] += 1
+        
+        # STEP 4: Convert to list
+        aggregated_data = list(aggregated_data_dict.values())
+        
+        logger.info(f"Aggregated {len(aggregated_data)} entries in memory")
+        
+        # STEP 5: Delete old entries
+        date_strs = [(cutoff_date + timedelta(days=i)).strftime('%Y-%m-%d') 
+                     for i in range(INCREMENTAL_REFRESH_DAYS + 1)]
+        delete_result = await materialized_view.delete_many({"date": {"$in": date_strs}})
+        logger.info(f"Deleted {delete_result.deleted_count} old entries")
+        
+        # STEP 6: Insert new data
+        if aggregated_data:
+            batch_size = 1000
+            for i in range(0, len(aggregated_data), batch_size):
+                batch = aggregated_data[i:i+batch_size]
+                await materialized_view.insert_many(batch, ordered=False)
+        
+        duration = time.time() - start_time
+        logger.info(f"Incremental view refresh completed in {duration:.1f}s")
+        
+        if redis_client is not None:
+            await clear_cache_pattern("*")
+        
+        main_count = await collection.count_documents({})
+        view_count = await materialized_view.count_documents({})
+        logger.info(f"Main: {main_count:,} docs | View: {view_count:,} entries")
+        
+        return duration
+        
+    except Exception as e:
+        logger.error(f"View refresh failed: {e}")
+        traceback.print_exc()
+        return None
+
+async def refresh_materialized_view_full():
+    """
+    Full refresh using ONLY collection.find()
+    All aggregation done in memory
+    """
+    if collection is None or materialized_view is None:
+        logger.warning("Collections not initialized")
+        return
+    
+    try:
+        start_time = time.time()
+        logger.info("Starting FULL materialized view refresh...")
+        
+        if collection.name != MAIN_COLLECTION_NAME or materialized_view.name != VIEW_COLLECTION_NAME:
+            logger.error("SAFETY: Wrong collection names")
+            return
+        
+        # STEP 1: Fetch ALL tickets using ONLY collection.find()
+        projection = {
+            "created_at": 1,
+            "updated_at": 1,
+            "client_id": 1,
+            "client": 1,
+            "auto_qa_status": 1,
+            "request_status": 1,
+            "qa": 1,
+            "request": 1,
+            "_id": 0
+        }
+        
+        raw_tickets = await fetch_tickets_raw(
+            match_conditions={},
+            projection=projection,
+            limit=None
+        )
+        
+        logger.info(f"Fetched {len(raw_tickets)} total tickets using collection.find()")
+        
+        # STEP 2: Normalize in memory
+        normalized_tickets = normalize_ticket_list(raw_tickets)
+        
+        # STEP 3: Aggregate in memory
+        aggregated_data_dict = {}
+        
+        for ticket in normalized_tickets:
+            date_str = extract_date(ticket).strftime('%Y-%m-%d')
+            client_id = str(ticket.get('client_id', 'unknown'))
+            status = parse_ticket_status(ticket)
+            
+            key = (date_str, client_id, status)
+            
+            if key not in aggregated_data_dict:
+                aggregated_data_dict[key] = {
+                    "date": date_str,
+                    "client_id": client_id,
+                    "status": status,
+                    "count": 0
+                }
+            
+            aggregated_data_dict[key]["count"] += 1
+        
+        aggregated_data = list(aggregated_data_dict.values())
+        
+        logger.info(f"Aggregated {len(aggregated_data)} entries in memory")
+        
+        # STEP 4: Clear and insert
+        await materialized_view.delete_many({})
+        logger.info("Cleared entire view")
+        
+        if aggregated_data:
+            batch_size = 1000
+            for i in range(0, len(aggregated_data), batch_size):
+                batch = aggregated_data[i:i+batch_size]
+                await materialized_view.insert_many(batch, ordered=False)
+        
+        duration = time.time() - start_time
+        logger.info(f"Full view refresh completed in {duration:.1f}s")
+        
+        if redis_client is not None:
+            await clear_cache_pattern("*")
+        
+        return duration
+        
+    except Exception as e:
+        logger.error(f"Full view refresh failed: {e}")
+        traceback.print_exc()
+        return None
+
+refresh_materialized_view = refresh_materialized_view_incremental
+
+async def scheduled_refresh_with_adaptive_interval():
+    """Smart scheduler that adapts based on refresh duration"""
+    duration = await refresh_materialized_view()
+    
+    if duration:
+        next_interval_minutes = max(10, int(duration / 60 * 1.5))
+        logger.info(f"Next refresh scheduled in {next_interval_minutes} minutes")
+        scheduler.reschedule_job('refresh_view', trigger='interval', minutes=next_interval_minutes)
+
+# ============================================================================
+# FASTAPI APP
+# ============================================================================
+
+app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database connections with connection pooling and error handling"""
-    global mongo_client, db, collection, redis_client
+    """Initialize connections and scheduler"""
+    global mongo_client, db, collection, materialized_view, redis_client
     
-    # MongoDB Atlas connection with comprehensive error handling
     try:
-        MONGO_URI = os.getenv("MONGODB_URI")
-        
-        if not MONGO_URI:
-            raise ValueError("MONGODB_URI environment variable not set")
-        
-        logger.info("🔄 Connecting to MongoDB...")
-        
-        # Performance: Optimized connection pool settings
+        MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         mongo_client = AsyncIOMotorClient(
             MONGO_URI,
-            maxPoolSize=100,  # Increased for high traffic
+            maxPoolSize=100,
             minPoolSize=20,
             maxIdleTimeMS=45000,
-            serverSelectionTimeoutMS=10000,
-            waitQueueTimeoutMS=5000,  # Max wait for connection from pool
-            connectTimeoutMS=10000,
-            socketTimeoutMS=30000,  # Query timeout
+            serverSelectionTimeoutMS=5000,
             retryWrites=True,
             retryReads=True
         )
         
-        # Test connection with timeout
-        await asyncio.wait_for(
-            mongo_client.admin.command('ping'),
-            timeout=10.0
-        )
-        
+        await mongo_client.admin.command('ping')
         db = mongo_client["AutoQA"]
-        collection = db["auto_qa_results_demo"]
+        collection = db[MAIN_COLLECTION_NAME]
+        materialized_view = db[VIEW_COLLECTION_NAME]
         
-        logger.info("✅ MongoDB connected")
+        main_count = await collection.count_documents({})
+        logger.info("Connected to MongoDB Atlas")
+        logger.info(f"Main: {MAIN_COLLECTION_NAME} ({main_count:,} docs)")
+        logger.info(f"View: {VIEW_COLLECTION_NAME}")
         
-        # Performance: Ensure indexes exist (with background creation)
-        await ensure_indexes()
+        # Create indexes on materialized view
+        try:
+            existing_indexes = await materialized_view.index_information()
+            logger.info(f"Existing view indexes: {len(existing_indexes)}")
+            
+            view_indexes = [
+                [("date", 1), ("client_id", 1), ("status", 1)],
+                [("date", 1), ("status", 1)],
+                [("client_id", 1)]
+            ]
+            
+            for index_fields in view_indexes:
+                index_name = "_".join([f"{f}_{d}" for f, d in index_fields])
+                if index_name not in existing_indexes:
+                    await materialized_view.create_index(index_fields, background=True)
+                    logger.info(f"Created view index: {index_name}")
+            
+            logger.info("Materialized view indexed")
+        except Exception as e:
+            logger.warning(f"View indexing skipped: {e}")
         
-    except asyncio.TimeoutError:
-        logger.error("❌ MongoDB connection timeout")
-        mongo_client = None
-        db = None
-        collection = None
-    except Exception as e:
-        logger.error(f"❌ MongoDB failed: {e}")
-        mongo_client = None
-        db = None
-        collection = None
-    
-    # Redis cache with improved connection pool
-    try:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        logger.info("🔄 Connecting to Redis...")
+        # PHASE 1: Create compound index on main collection
+        try:
+            main_indexes = await collection.index_information()
+            
+            if "client_id_1_created_at_-1_auto_qa_status_1" not in main_indexes:
+                await collection.create_index(
+                    [("client_id", 1), ("created_at", -1), ("auto_qa_status", 1)],
+                    background=True,
+                    name="client_id_1_created_at_-1_auto_qa_status_1"
+                )
+                logger.info("PHASE 1: Created compound index (client_id + created_at + auto_qa_status)")
+            
+            cutoff_date = datetime.now() - timedelta(days=180)
+            
+            if "created_at_-1_client_id_1_partial" not in main_indexes:
+                await collection.create_index(
+                    [("created_at", -1), ("client_id", 1)],
+                    partialFilterExpression={"created_at": {"$gte": cutoff_date}},
+                    background=True,
+                    name="created_at_-1_client_id_1_partial"
+                )
+                logger.info("Created partial index (created_at + client_id, last 180 days)")
+            
+            if "client_id_1_only" not in main_indexes:
+                await collection.create_index(
+                    [("client_id", 1)],
+                    background=True,
+                    name="client_id_1_only"
+                )
+                logger.info("Created single-field index (client_id)")
+            
+            logger.info("Main collection indexed with compound indexes")
+        except Exception as e:
+            logger.warning(f"Main collection indexing skipped: {e}")
         
-        # Performance: Larger connection pool with timeouts
-        redis_client = await asyncio.wait_for(
-            aioredis.from_url(
-                redis_url,
-                encoding="utf-8",
-                decode_responses=True,
-                max_connections=200,  # Increased for high traffic
-                socket_connect_timeout=5,
-                socket_timeout=5,
-                retry_on_timeout=True,
-                health_check_interval=30
-            ),
-            timeout=5.0
+        # Initial view refresh
+        logger.info("Performing initial view refresh...")
+        await refresh_materialized_view_full()
+        
+        # Schedule adaptive refresh
+        scheduler.add_job(
+            scheduled_refresh_with_adaptive_interval,
+            'interval',
+            minutes=10,
+            id='refresh_view',
+            replace_existing=True
         )
         
-        await asyncio.wait_for(redis_client.ping(), timeout=2.0)
-        logger.info("✅ Redis connected")
-        
-    except (asyncio.TimeoutError, Exception) as e:
-        logger.warning(f"⚠️ Redis unavailable (app will continue without cache): {e}")
-        redis_client = None
-    
-    # Performance: Start cache warming scheduler
-    try:
+        # Background client list refresh
         scheduler.add_job(
-            warm_cache_today,
-            CronTrigger(hour=0, minute=5),  # Daily at 12:05 AM
-            id="warm_cache_daily",
+            refresh_client_list_background,
+            'interval',
+            seconds=1800,
+            id='refresh_clients',
             replace_existing=True
         )
         
         scheduler.start()
-        logger.info("✅ Cache warming scheduler started")
-        
-        # Warm cache immediately on startup
-        asyncio.create_task(warm_cache_today())
+        logger.info("Adaptive scheduler started (initial: 10 min)")
+        logger.info("Client list background refresh scheduled (30 min)")
         
     except Exception as e:
-        logger.warning(f"⚠️ Scheduler failed to start: {e}")
-
+        logger.error(f"MongoDB failed: {e}")
+        traceback.print_exc()
+        mongo_client = None
+    
+    # Redis connection with LRU eviction policy
+    try:
+        redis_client = await aioredis.from_url(
+            "redis://localhost:6379",
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=50
+        )
+        await redis_client.ping()
+        
+        try:
+            await redis_client.config_set('maxmemory-policy', 'allkeys-lru')
+            logger.info("Redis LRU eviction policy enabled")
+        except:
+            logger.warning("Could not set Redis eviction policy (may need admin rights)")
+        
+        logger.info("Redis connected")
+        
+        # PHASE 1: Cache warming on startup
+        await warm_cache()
+        
+    except Exception as e:
+        logger.warning(f"Redis unavailable: {e}")
+        redis_client = None
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Gracefully close all connections"""
-    try:
-        if scheduler.running:
-            scheduler.shutdown()
-            logger.info("🛑 Scheduler stopped")
-    except Exception as e:
-        logger.error(f"Error stopping scheduler: {e}")
-    
-    try:
-        if redis_client is not None:
-            await redis_client.close()
-            logger.info("🛑 Redis connection closed")
-    except Exception as e:
-        logger.error(f"Error closing Redis: {e}")
-    
-    try:
-        if mongo_client is not None:
-            mongo_client.close()
-            logger.info("🛑 MongoDB connection closed")
-    except Exception as e:
-        logger.error(f"Error closing MongoDB: {e}")
+    """Cleanup connections"""
+    if scheduler.running:
+        scheduler.shutdown()
+    if redis_client is not None:
+        await redis_client.close()
+    if mongo_client is not None:
+        mongo_client.close()
 
-
-async def get_cache(key: str):
-    """Retrieve cached data from Redis with timeout"""
-    if redis_client is None:
-        return None
-    try:
-        # Crash fix: Add timeout to prevent hanging
-        data = await asyncio.wait_for(
-            redis_client.get(key),
-            timeout=2.0
-        )
-        if data:
-            logger.info(f"[CACHE HIT] {key}")
-            return json.loads(data)
-        logger.info(f"[CACHE MISS] {key}")
-        return None
-    except asyncio.TimeoutError:
-        logger.warning(f"Cache timeout for key: {key}")
-        return None
-    except Exception as e:
-        logger.error(f"Cache retrieval error: {e}")
-        return None
-
-
-async def set_cache(key: str, data: dict, expire: int = 300):
-    """Store data in Redis cache with expiration and timeout"""
-    if redis_client is None:
-        return
-    try:
-        # Crash fix: Add timeout
-        await asyncio.wait_for(
-            redis_client.setex(key, expire, json.dumps(data)),
-            timeout=2.0
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"Cache set timeout for key: {key}")
-    except Exception as e:
-        logger.error(f"Cache storage error: {e}")
-
-
-async def clear_cache_pattern(pattern: str):
-    """Clear cache keys matching pattern"""
-    if redis_client is None:
-        return
-    try:
-        keys = await asyncio.wait_for(
-            redis_client.keys(pattern),
-            timeout=5.0
-        )
-        if keys:
-            await redis_client.delete(*keys)
-            logger.info(f"🗑️ Cleared {len(keys)} cache keys")
-    except Exception as e:
-        logger.error(f"Cache clear error: {e}")
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Handle all uncaught exceptions"""
-    logger.error(f"Unhandled error on {request.url.path}: {exc}", exc_info=True)
-    
-    # Don't expose internal errors in production
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "path": request.url.path}
-    )
-
+# ============================================================================
+# API ENDPOINTS (ALL using collection.find() only)
+# ============================================================================
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    """Render main dashboard page"""
+    """Render dashboard"""
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for monitoring"""
-    health_status = {
-        "status": "healthy",
-        "mongodb": "connected" if (mongo_client is not None and collection is not None) else "disconnected",
-        "redis": "connected" if redis_client is not None else "disconnected",
-        "timestamp": datetime.now().isoformat()
-    }
+@app.get("/api/cache-metrics")
+async def get_cache_metrics():
+    """Get cache hit rate metrics"""
+    endpoint_stats = {}
+    for endpoint, stats in cache_metrics["by_endpoint"].items():
+        total = stats["hits"] + stats["misses"]
+        if total > 0:
+            endpoint_stats[endpoint] = {
+                "hits": stats["hits"],
+                "misses": stats["misses"],
+                "total": total,
+                "hit_rate": (stats["hits"] / total) * 100
+            }
     
-    # Return 503 if critical components are down
-    if mongo_client is None or collection is None:
-        return JSONResponse(
-            status_code=503,
-            content={**health_status, "status": "unhealthy"}
-        )
-    
-    return JSONResponse(content=health_status)
-
+    return JSONResponse(content={
+        "overall": {
+            "hits": cache_metrics["hits"],
+            "misses": cache_metrics["misses"],
+            "total": cache_metrics["total_requests"],
+            "hit_rate": cache_metrics["hit_rate"]
+        },
+        "by_endpoint": endpoint_stats
+    })
 
 @app.get("/api/ticket-data")
-async def get_ticket_data(date: str = None):
-    """
-    Get aggregated ticket counts by client and status for a specific date.
-    Uses MongoDB aggregation pipeline with optimizations:
-    - Field projection (only fetch needed fields)
-    - Parallel execution ready
-    - Response caching
-    - Query timeout protection
-    """
-    # Crash fix: Check both client and collection
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
+@require_db
+@rate_limit
+async def get_ticket_data(request: Request, date: str = None):
+    """Get tickets by date using only find()"""
+    if not date:
+        date = datetime.now().strftime('%Y-%m-%d')
     
-    # Performance & Crash fix: Safe date parsing
-    target_date = parse_date_safe(date)
-    date_str = target_date.strftime('%Y-%m-%d')
+    cache_key = f"ticket_data:{date}"
+    cached_data = await get_cache(cache_key, endpoint="ticket_data")
+    if cached_data:
+        return JSONResponse(content=cached_data)
     
-    cache_key = f"ticket_data:{date_str}"
-    cached_data = await get_cache(cache_key)
+    # STEP 1: FETCH using only find()
+    if materialized_view is not None:
+        raw_view_data = await fetch_view_raw(
+            match_conditions={"date": date},
+            projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
+            limit=10000,
+            sort=[("client_id", 1)]
+        )
+        
+        if raw_view_data:
+            # STEP 2: TRANSFORM in memory
+            client_stats = {}
+            
+            for entry in raw_view_data:
+                client_id = entry.get("client_id")
+                status = entry.get("status")
+                count = entry.get("count", 0)
+                
+                if client_id not in client_stats:
+                    client_stats[client_id] = init_stats_dict()
+                
+                if status in client_stats[client_id]:
+                    client_stats[client_id][status] += count
+            
+            sorted_clients = sorted(client_stats.keys())[:100]
+            
+            response_data = {
+                'client_ids': sorted_clients,
+                'completed': [client_stats[c]['completed'] for c in sorted_clients],
+                'processing': [client_stats[c]['processing'] for c in sorted_clients],
+                'failed': [client_stats[c]['failed'] for c in sorted_clients],
+                'callback': [client_stats[c]['callback'] for c in sorted_clients]
+            }
+            
+            await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
+            return JSONResponse(content=response_data)
+    
+    # Fallback: use collection.find()
+    target_date = datetime.strptime(date, "%Y-%m-%d")
+    start, end = get_date_range(target_date, days=1)
+    
+    match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+    projection = {
+        "client_id": 1,
+        "client": 1,
+        "auto_qa_status": 1,
+        "request_status": 1,
+        "qa": 1,
+        "request": 1,
+        "_id": 0
+    }
+    
+    raw_tickets = await fetch_tickets_raw(
+        match_conditions=match_conditions,
+        projection=projection,
+        limit=10000
+    )
+    
+    # Normalize and transform in memory
+    normalized_tickets = normalize_ticket_list(raw_tickets)
+    client_counts = count_by_client_and_status(normalized_tickets)
+    
+    sorted_clients = sorted(client_counts.keys())[:100]
+    
+    response_data = {
+        'client_ids': sorted_clients,
+        'completed': [client_counts[c]['completed'] for c in sorted_clients],
+        'processing': [client_counts[c]['processing'] for c in sorted_clients],
+        'failed': [client_counts[c]['failed'] for c in sorted_clients],
+        'callback': [client_counts[c]['callback'] for c in sorted_clients]
+    }
+    
+    await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
+    return JSONResponse(content=response_data)
+
+@app.get("/api/detailed-tickets")
+@require_db
+@rate_limit
+async def get_detailed_tickets(request: Request, date: str, status: str):
+    """Get detailed tickets using only collection.find()"""
+    target_date = datetime.strptime(date, "%Y-%m-%d")
+    start, end = get_date_range(target_date, days=1)
+    
+    # Fetch using only find()
+    match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+    projection = {
+        "ticket_id": 1,
+        "client_id": 1,
+        "client": 1,
+        "created_at": 1,
+        "auto_qa_status": 1,
+        "request_status": 1,
+        "qa": 1,
+        "request": 1,
+        "_id": 1
+    }
+    
+    raw_tickets = await fetch_tickets_raw(
+        match_conditions=match_conditions,
+        projection=projection,
+        limit=5000
+    )
+    
+    # Normalize, filter, and sort in memory
+    normalized_tickets = normalize_ticket_list(raw_tickets)
+    filtered_tickets = filter_by_status(normalized_tickets, status)
+    sorted_tickets = sort_by_date(filtered_tickets, descending=True)
+    
+    # Format response
+    formatted_tickets = []
+    for t in sorted_tickets[:1000]:
+        formatted_tickets.append({
+            'ticket_id': t.get('ticket_id', 'N/A'),
+            'client_id': str(t.get('client_id', 'N/A')),
+            'status': status,
+            'created_at': t['created_at'].strftime('%Y-%m-%d %H:%M') if isinstance(t.get('created_at'), datetime) else 'N/A',
+            'auto_qa_status': t.get('auto_qa_status', 'N/A'),
+            'request_status': t.get('request_status', 'N/A')
+        })
+    
+    return JSONResponse(content={
+        'date': date,
+        'status': status,
+        'total_tickets': len(formatted_tickets),
+        'tickets': formatted_tickets
+    })
+
+@app.get("/api/all-clients")
+@require_db
+@rate_limit
+async def get_all_clients(
+    request: Request,
+    limit: int = CLIENT_LIST_DEFAULT_LIMIT,
+    offset: int = 0,
+    search: str = None
+):
+    """Get client IDs using only find()"""
+    
+    cache_key = f"all_clients:{limit}:{offset}:{search or 'all'}"
+    cached_data = await get_cache(cache_key, endpoint="all_clients")
     if cached_data:
         return JSONResponse(content=cached_data)
     
     try:
-        start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = start_of_day + timedelta(days=1)
+        # Fetch using only find()
+        if materialized_view is not None:
+            raw_view_data = await fetch_view_raw(
+                match_conditions={},
+                projection={"client_id": 1, "_id": 0},
+                limit=50000,
+                sort=None
+            )
+            all_clients = extract_unique_values(raw_view_data, "client_id")
+        else:
+            raw_tickets = await fetch_tickets_raw(
+                match_conditions={},
+                projection={"client_id": 1, "_id": 0},
+                limit=50000,
+                sort=None
+            )
+            all_clients = extract_unique_values(raw_tickets, "client_id")
         
-        logger.info(f"📊 Fetching tickets for {date_str}")
+        # Filter and paginate in memory
+        if search:
+            all_clients = search_in_list(all_clients, search)
         
-        # Performance: Aggregation pipeline with field projection
-        pipeline = [
-            {
-                "$match": {
-                    "created_at": {"$gte": start_of_day, "$lt": end_of_day}
-                }
-            },
-            {
-                # Performance: Only project needed fields
-                "$project": {
-                    "_id": 0,  # Don't fetch ObjectId
-                    "client_id": {"$ifNull": ["$client_id", "Unknown"]},
-                    "auto_qa_status": {"$toLower": {"$toString": "$auto_qa_status"}},
-                    "request_status": {"$toLower": {"$toString": "$request_status"}}
-                }
-            },
-            {
-                "$addFields": {
-                    "status": {
-                        "$switch": {
-                            "branches": [
-                                {"case": {"$eq": ["$auto_qa_status", "complete"]}, "then": "completed"},
-                                {"case": {"$eq": ["$auto_qa_status", "callback"]}, "then": "callback"},
-                                {
-                                    "case": {
-                                        "$or": [
-                                            {"$eq": ["$auto_qa_status", "failed"]},
-                                            {"$eq": ["$request_status", "failed"]}
-                                        ]
-                                    },
-                                    "then": "failed"
-                                }
-                            ],
-                            "default": "processing"
-                        }
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        "client_id": "$client_id",
-                        "status": "$status"
-                    },
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$_id.client_id",
-                    "stats": {
-                        "$push": {
-                            "status": "$_id.status",
-                            "count": "$count"
-                        }
-                    }
-                }
-            },
-            {
-                "$sort": {"_id": 1}
-            },
-            {
-                "$limit": 1000  # Reasonable limit for performance
-            }
-        ]
-        
-        # Crash fix: Add timeout to prevent hanging
-        cursor = collection.aggregate(pipeline)
-        results = await asyncio.wait_for(
-            cursor.to_list(length=1000),
-            timeout=30.0
-        )
-        
-        logger.info(f"📊 Processed data for {len(results)} clients")
-        
-        # Crash fix: Handle empty results safely
-        if not results:
-            response_data = {
-                'client_ids': [],
-                'completed': [],
-                'processing': [],
-                'failed': [],
-                'callback': [],
-                'message': 'No data available'
-            }
-            await set_cache(cache_key, response_data, expire=300)
-            return JSONResponse(content=response_data)
-        
-        # Transform aggregation results to frontend format
-        client_ids = []
-        completed = []
-        processing = []
-        failed = []
-        callback = []
-        
-        for result in results:
-            # Crash fix: Handle None client_id properly
-            raw_id = result.get('_id')
-            if raw_id is None or raw_id == '':
-                client_id = 'Unknown'
-            else:
-                client_id = str(raw_id)
-            
-            client_ids.append(client_id)
-            
-            stats = {stat['status']: stat['count'] for stat in result.get('stats', [])}
-            completed.append(stats.get('completed', 0))
-            processing.append(stats.get('processing', 0))
-            failed.append(stats.get('failed', 0))
-            callback.append(stats.get('callback', 0))
+        total_count = len(all_clients)
+        paginated_clients = paginate_data(all_clients, offset, limit)
         
         response_data = {
-            'client_ids': client_ids,
-            'completed': completed,
-            'processing': processing,
-            'failed': failed,
-            'callback': callback
+            "client_ids": paginated_clients,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + len(paginated_clients)) < total_count
         }
         
-        await set_cache(cache_key, response_data, expire=300)
+        await set_cache(cache_key, response_data, expire=CLIENT_LIST_CACHE_TTL)
+        
         return JSONResponse(content=response_data)
-    
-    except asyncio.TimeoutError:
-        logger.error(f"Query timeout for date: {date_str}")
-        return JSONResponse(
-            status_code=504,
-            content={"error": "Query timeout. Please try again."}
-        )
+        
     except Exception as e:
-        logger.error(f"Error in get_ticket_data: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": "Internal server error"})
+        logger.error(f"Client list query failed: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-
-@app.get("/api/detailed-tickets")
-async def get_detailed_tickets(date: str, status: str, page: int = 1, limit: int = 100):
-    """
-    Get detailed ticket information for modal display.
-    Performance optimizations:
-    - Pagination (reduced from 1000 to 100)
-    - Field projection
-    - Query timeout
-    """
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
+@app.get("/api/clients/search")
+@require_db
+@rate_limit
+async def search_clients(request: Request, q: str, limit: int = 50):
+    """Fast client search using cached data"""
+    if not q or len(q) < 1:
+        return JSONResponse(content={"client_ids": []})
     
-    # Performance: Reduce limit for better performance
-    if limit > 500:
-        limit = 500
-    
-    try:
-        target_date = parse_date_safe(date)
-        start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = start_of_day + timedelta(days=1)
-        
-        logger.info(f"📋 Fetching detailed {status} tickets for {date}")
-        
-        # Performance: Optimized pipeline with field projection
-        pipeline = [
-            {
-                "$match": {
-                    "created_at": {"$gte": start_of_day, "$lt": end_of_day}
-                }
-            },
-            {
-                # Performance: Only fetch fields shown in modal
-                "$project": {
-                    "_id": 0,  # Exclude ObjectId
-                    "ticket_id": 1,
-                    "client_id": 1,
-                    "created_at": 1,
-                    "auto_qa_status": 1,
-                    "request_status": 1,
-                    "status_computed": {
-                        "$switch": {
-                            "branches": [
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "complete"]}, "then": "completed"},
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "callback"]}, "then": "callback"},
-                                {
-                                    "case": {
-                                        "$or": [
-                                            {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "failed"]},
-                                            {"$eq": [{"$toLower": {"$toString": "$request_status"}}, "failed"]}
-                                        ]
-                                    },
-                                    "then": "failed"
-                                }
-                            ],
-                            "default": "processing"
-                        }
-                    }
-                }
-            },
-            {
-                "$match": {
-                    "status_computed": status
-                }
-            },
-            {
-                "$sort": {"created_at": -1}
-            },
-            {
-                "$facet": {
-                    "metadata": [{"$count": "total"}],
-                    "data": [
-                        {"$skip": (page - 1) * limit},
-                        {"$limit": limit}
-                    ]
-                }
-            }
-        ]
-        
-        # Crash fix: Timeout protection
-        cursor = collection.aggregate(pipeline)
-        results = await asyncio.wait_for(
-            cursor.to_list(length=1),
-            timeout=30.0
-        )
-        
-        # Crash fix: Safe result access
-        if not results or not results[0]:
-            return JSONResponse(content={
-                'date': date,
-                'status': status,
-                'total_tickets': 0,
-                'tickets': []
-            })
-        
-        total_count = 0
-        tickets = []
-        
-        if results[0].get('metadata') and len(results[0]['metadata']) > 0:
-            total_count = results[0]['metadata'][0].get('total', 0)
-        
-        if results[0].get('data'):
-            tickets = results[0]['data']
-        
-        logger.info(f"📋 Found {total_count} {status} tickets (returning {len(tickets)})")
-        
-        formatted_tickets = []
-        for ticket in tickets:
-            formatted_tickets.append({
-                'ticket_id': ticket.get('ticket_id', 'N/A'),
-                'client_id': ticket.get('client_id', 'N/A'),
-                'status': ticket.get('status_computed', 'N/A'),
-                'created_at': ticket.get('created_at').strftime('%Y-%m-%d %H:%M') if ticket.get('created_at') else 'N/A',
-                'auto_qa_status': ticket.get('auto_qa_status', 'N/A'),
-                'request_status': ticket.get('request_status', 'N/A')
-            })
-        
-        return JSONResponse(content={
-            'date': date,
-            'status': status,
-            'total_tickets': total_count,
-            'tickets': formatted_tickets
-        })
-    
-    except asyncio.TimeoutError:
-        logger.error(f"Query timeout for detailed tickets: {date}, {status}")
-        return JSONResponse(
-            status_code=504,
-            content={"error": "Query timeout. Please try again."}
-        )
-    except Exception as e:
-        logger.error(f"Error in get_detailed_tickets: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": "Internal server error"})
-
-
-@app.get("/api/all-clients")
-async def get_all_clients():
-    """Get list of all unique client IDs from database with caching"""
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
-    
-    cache_key = "all_clients"
-    cached_data = await get_cache(cache_key)
+    cache_key = f"client_search:{q}:{limit}"
+    cached_data = await get_cache(cache_key, endpoint="client_search")
     if cached_data:
-        return JSONResponse(content={"client_ids": cached_data})
+        return JSONResponse(content=cached_data)
     
     try:
-        # Crash fix: Add timeout
-        clients = await asyncio.wait_for(
-            collection.distinct("client_id"),
-            timeout=10.0
-        )
+        all_clients_cache_key = "all_clients_raw_list"
+        all_clients = await get_cache(all_clients_cache_key, endpoint="all_clients_raw")
         
-        # Crash fix: Handle None values
-        clients = sorted([str(cid) for cid in clients if cid is not None and cid != ''])
+        if all_clients is None:
+            if materialized_view is not None:
+                raw_view_data = await fetch_view_raw(
+                    match_conditions={},
+                    projection={"client_id": 1, "_id": 0},
+                    limit=50000,
+                    sort=None
+                )
+                all_clients = extract_unique_values(raw_view_data, "client_id")
+            else:
+                raw_tickets = await fetch_tickets_raw(
+                    match_conditions={},
+                    projection={"client_id": 1, "_id": 0},
+                    limit=50000,
+                    sort=None
+                )
+                all_clients = extract_unique_values(raw_tickets, "client_id")
+            
+            await set_cache(all_clients_cache_key, all_clients, expire=3600)
         
-        logger.info(f"Found {len(clients)} clients")
-        await set_cache(cache_key, clients, expire=600)
-        return JSONResponse(content={"client_ids": clients})
-    
-    except asyncio.TimeoutError:
-        logger.error("Timeout fetching clients")
-        return JSONResponse(status_code=504, content={"error": "Query timeout"})
+        # Search in memory
+        matching_clients = search_in_list(all_clients, q)[:limit]
+        
+        response_data = {"client_ids": matching_clients}
+        await set_cache(cache_key, response_data, expire=600)
+        
+        return JSONResponse(content=response_data)
+        
     except Exception as e:
-        logger.error(f"Error in get_all_clients: {e}")
-        return JSONResponse(status_code=500, content={"error": "Internal server error"})
-
+        logger.error(f"Client search failed: {e}")
+        return JSONResponse(content={"client_ids": []})
 
 @app.get("/api/client-tickets-7days")
-async def get_client_tickets_7days(client_id: str):
-    """
-    Get 7-day ticket analytics for a specific client.
-    Returns both aggregate totals and daily breakdown.
-    """
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"success": False, "error": "Database unavailable"})
-    
-    if not client_id or client_id.strip() == '':
+@require_db
+@rate_limit
+async def get_client_tickets_7days(request: Request, client_id: str):
+    """Get client 7-day data using only collection.find()"""
+    if not client_id:
         return JSONResponse(status_code=400, content={"success": False, "error": "Client ID required"})
     
     cache_key = f"client_7days:{client_id}"
-    cached_data = await get_cache(cache_key)
+    cached_data = await get_cache(cache_key, endpoint="client_7days")
     if cached_data:
         return JSONResponse(content=cached_data)
     
-    try:
-        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999)
-        start_date = (end_date - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        logger.info(f"📈 Client {client_id}: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-        
-        # Performance: Aggregation pipeline with field projection
-        pipeline = [
-            {
-                "$match": {
-                    "client_id": str(client_id),
-                    "created_at": {"$gte": start_date, "$lte": end_date}
-                }
-            },
-            {
-                # Performance: Only project needed fields
-                "$project": {
-                    "_id": 0,
-                    "date": {
-                        "$dateToString": {
-                            "format": "%Y-%m-%d",
-                            "date": "$created_at"
-                        }
-                    },
-                    "status": {
-                        "$switch": {
-                            "branches": [
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "complete"]}, "then": "completed"},
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "callback"]}, "then": "callback"},
-                                {
-                                    "case": {
-                                        "$or": [
-                                            {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "failed"]},
-                                            {"$eq": [{"$toLower": {"$toString": "$request_status"}}, "failed"]}
-                                        ]
-                                    },
-                                    "then": "failed"
-                                }
-                            ],
-                            "default": "processing"
-                        }
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        "date": "$date",
-                        "status": "$status"
-                    },
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$_id.date",
-                    "stats": {
-                        "$push": {
-                            "status": "$_id.status",
-                            "count": "$count"
-                        }
-                    }
-                }
-            },
-            {
-                "$sort": {"_id": 1}
-            }
-        ]
-        
-        # Crash fix: Timeout protection
-        cursor = collection.aggregate(pipeline)
-        results = await asyncio.wait_for(
-            cursor.to_list(length=7),
-            timeout=20.0
-        )
-        
-        logger.info(f"📈 Processed {len(results)} days of data")
-        
-        # Build response structure
-        dates = get_last_n_days_labels_from_date(end_date, 7)
-        date_map = {}
-        total_stats = {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}
-        
-        for result in results:
-            stats = {stat['status']: stat['count'] for stat in result.get('stats', [])}
-            date_map[result['_id']] = stats
-            
-            for status in ['completed', 'processing', 'failed', 'callback']:
-                total_stats[status] += stats.get(status, 0)
-        
-        # Build daily arrays for charts
-        completed_data = []
-        processing_data = []
-        failed_data = []
-        callback_data = []
-        
-        for i in range(6, -1, -1):
-            date = end_date - timedelta(days=i)
-            date_str = date.strftime('%Y-%m-%d')
-            stats = date_map.get(date_str, {})
-            completed_data.append(stats.get('completed', 0))
-            processing_data.append(stats.get('processing', 0))
-            failed_data.append(stats.get('failed', 0))
-            callback_data.append(stats.get('callback', 0))
-        
-        response_data = {
-            'success': True,
-            'total_tickets': sum(total_stats.values()),
-            'all_time_stats': total_stats,
-            'seven_day_data': {
-                'dates': dates,
-                'completed': completed_data,
-                'processing': processing_data,
-                'failed': failed_data,
-                'callback': callback_data
-            }
-        }
-        
-        await set_cache(cache_key, response_data, expire=300)
-        return JSONResponse(content=response_data)
+    end_date = datetime.now()
+    start_date, end_date = get_date_range(end_date, days=7)
     
-    except asyncio.TimeoutError:
-        logger.error(f"Query timeout for client: {client_id}")
-        return JSONResponse(
-            status_code=504,
-            content={"success": False, "error": "Query timeout"}
-        )
-    except Exception as e:
-        logger.error(f"Error in get_client_tickets_7days: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})
-
+    # Fetch using only collection.find()
+    match_conditions = {
+        'client_id': str(client_id),
+        'created_at': {'$gte': start_date, '$lte': end_date}
+    }
+    projection = {
+        'created_at': 1,
+        'auto_qa_status': 1,
+        'request_status': 1,
+        'qa': 1,
+        'request': 1,
+        '_id': 0
+    }
+    
+    raw_tickets = await fetch_tickets_raw(
+        match_conditions=match_conditions,
+        projection=projection,
+        limit=10000
+    )
+    
+    if not raw_tickets:
+        return JSONResponse(content={
+            'success': True,
+            'total_tickets': 0,
+            'all_time_stats': init_stats_dict(),
+            'seven_day_data': {
+                'dates': format_date_labels(end_date, 7),
+                'completed': [0] * 7,
+                'processing': [0] * 7,
+                'failed': [0] * 7,
+                'callback': [0] * 7
+            }
+        })
+    
+    # Normalize and count in memory
+    normalized_tickets = normalize_ticket_list(raw_tickets)
+    total_counts = count_by_status(normalized_tickets)
+    daily_counts = count_by_date_and_status(normalized_tickets, end_date - timedelta(days=6), 7)
+    
+    # Format response
+    sorted_dates = sorted(daily_counts.keys())
+    seven_day_breakdown = {
+        'dates': [datetime.strptime(d, '%Y-%m-%d').strftime('%b %d, %Y') for d in sorted_dates],
+        'completed': [daily_counts[d]['completed'] for d in sorted_dates],
+        'processing': [daily_counts[d]['processing'] for d in sorted_dates],
+        'failed': [daily_counts[d]['failed'] for d in sorted_dates],
+        'callback': [daily_counts[d]['callback'] for d in sorted_dates]
+    }
+    
+    response_data = {
+        'success': True,
+        'total_tickets': len(normalized_tickets),
+        'all_time_stats': total_counts,
+        'seven_day_data': seven_day_breakdown
+    }
+    
+    await set_cache(cache_key, response_data, expire=DEFAULT_CACHE_TTL)
+    return JSONResponse(content=response_data)
 
 @app.get("/api/ticket-data-range")
-async def get_ticket_data_range(
-    start_date: str,
-    end_date: str,
-    client_ids: Optional[str] = None
-):
-    """
-    Get aggregated ticket data for a date range.
-    Optionally filter by specific client IDs.
+@require_db
+@rate_limit
+async def get_ticket_data_range(request: Request, start_date: str, end_date: str, client_ids: str = None):
+    """Get ticket data for date range using only find()"""
+    start = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+    end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999)
     
-    Args:
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-        client_ids: Comma-separated client IDs (optional)
+    cache_key = f"range:{start_date}:{end_date}:{client_ids or 'all'}"
+    cached_data = await get_cache(cache_key, endpoint="ticket_data_range")
+    if cached_data:
+        return JSONResponse(content=cached_data)
     
-    Returns:
-        Total counts by status and daily breakdown
-    """
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
-    
-    try:
-        # Parse and validate dates
-        start = parse_date_safe(start_date)
-        end = parse_date_safe(end_date)
+    # Fetch using only find()
+    if materialized_view is not None:
+        match_conditions = {"date": {"$gte": start_date, "$lte": end_date}}
         
-        # Validate date range
-        if end < start:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "End date must be after start date"}
-            )
-        
-        # Limit range to 90 days
-        if (end - start).days > 90:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Date range cannot exceed 90 days"}
-            )
-        
-        start_of_day = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = end.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
-        # Parse client IDs if provided
-        selected_clients = None
         if client_ids:
-            selected_clients = [cid.strip() for cid in client_ids.split(',') if cid.strip()]
+            client_list = [c.strip() for c in client_ids.split(",")]
+            match_conditions["client_id"] = {"$in": client_list}
         
-        # Build cache key
-        cache_key = f"range:{start_date}:{end_date}:{client_ids or 'all'}"
-        cached_data = await get_cache(cache_key)
-        if cached_data:
-            return JSONResponse(content=cached_data)
+        projection = {"date": 1, "client_id": 1, "status": 1, "count": 1, "_id": 0}
         
-        logger.info(f"📊 Fetching range: {start_date} to {end_date}, clients: {selected_clients or 'all'}")
+        raw_view_data = await fetch_view_raw(
+            match_conditions=match_conditions,
+            projection=projection,
+            limit=100000,
+            sort=None
+        )
+    else:
+        match_conditions = {"created_at": {"$gte": start, "$lte": end}}
         
-        # Build match condition
-        match_condition = {
-            "created_at": {"$gte": start_of_day, "$lte": end_of_day}
+        if client_ids:
+            client_list = [c.strip() for c in client_ids.split(",")]
+            match_conditions["client_id"] = {"$in": client_list}
+        
+        projection = {
+            "created_at": 1,
+            "client_id": 1,
+            "client": 1,
+            "auto_qa_status": 1,
+            "request_status": 1,
+            "qa": 1,
+            "request": 1,
+            "_id": 0
         }
         
-        if selected_clients:
-            match_condition["client_id"] = {"$in": selected_clients}
-        
-        # Aggregation pipeline for total counts by status
-        total_pipeline = [
-            {"$match": match_condition},
-            {
-                "$project": {
-                    "_id": 0,
-                    "status": {
-                        "$switch": {
-                            "branches": [
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "complete"]}, "then": "completed"},
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "callback"]}, "then": "callback"},
-                                {
-                                    "case": {
-                                        "$or": [
-                                            {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "failed"]},
-                                            {"$eq": [{"$toLower": {"$toString": "$request_status"}}, "failed"]}
-                                        ]
-                                    },
-                                    "then": "failed"
-                                }
-                            ],
-                            "default": "processing"
-                        }
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$status",
-                    "count": {"$sum": 1}
-                }
-            }
-        ]
-        
-        # Aggregation pipeline for daily breakdown
-        daily_pipeline = [
-            {"$match": match_condition},
-            {
-                "$project": {
-                    "_id": 0,
-                    "date": {
-                        "$dateToString": {
-                            "format": "%Y-%m-%d",
-                            "date": "$created_at"
-                        }
-                    },
-                    "status": {
-                        "$switch": {
-                            "branches": [
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "complete"]}, "then": "completed"},
-                                {"case": {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "callback"]}, "then": "callback"},
-                                {
-                                    "case": {
-                                        "$or": [
-                                            {"$eq": [{"$toLower": {"$toString": "$auto_qa_status"}}, "failed"]},
-                                            {"$eq": [{"$toLower": {"$toString": "$request_status"}}, "failed"]}
-                                        ]
-                                    },
-                                    "then": "failed"
-                                }
-                            ],
-                            "default": "processing"
-                        }
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        "date": "$date",
-                        "status": "$status"
-                    },
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$_id.date",
-                    "stats": {
-                        "$push": {
-                            "status": "$_id.status",
-                            "count": "$count"
-                        }
-                    }
-                }
-            },
-            {"$sort": {"_id": 1}}
-        ]
-        
-        # If specific clients selected, also get per-client breakdown
-        client_pipeline = None
-        if selected_clients:
-            client_pipeline = [
-                {"$match": match_condition},
-                {
-                    "$project": {
-                        "_id": 0,
-                        "client_id": 1,
-                        "status": {
-                            "$switch": {
-                                "branches": [
-                                    {"case": {"$eq": [{"$toLower": "$auto_qa_status"}, "complete"]}, "then": "completed"},
-                                    {"case": {"$eq": [{"$toLower": "$auto_qa_status"}, "callback"]}, "then": "callback"},
-                                    {"case": {"$or": [
-                                        {"$eq": [{"$toLower": "$auto_qa_status"}, "failed"]},
-                                        {"$eq": [{"$toLower": "$request_status"}, "failed"]}
-                                    ]}, "then": "failed"}
-                                ],
-                                "default": "processing"
-                            }
-                        }
-                    }
-                },
-                {
-                    "$group": {
-                        "_id": {
-                            "client_id": "$client_id",
-                            "status": "$status"
-                        },
-                        "count": {"$sum": 1}
-                    }
-                },
-                {
-                    "$group": {
-                        "_id": "$_id.client_id",
-                        "stats": {
-                            "$push": {
-                                "status": "$_id.status",
-                                "count": "$count"
-                            }
-                        }
-                    }
-                },
-                {"$sort": {"_id": 1}}
-            ]
-        
-        # Execute queries in parallel
-        tasks = [
-            collection.aggregate(total_pipeline).to_list(length=10),
-            collection.aggregate(daily_pipeline).to_list(length=365)
-        ]
-        
-        if client_pipeline:
-            tasks.append(collection.aggregate(client_pipeline).to_list(length=100))
-        
-        results = await asyncio.wait_for(
-            asyncio.gather(*tasks),
-            timeout=45.0
+        raw_tickets = await fetch_tickets_raw(
+            match_conditions=match_conditions,
+            projection=projection,
+            limit=100000
         )
         
-        total_results = results[0]
-        daily_results = results[1]
-        client_results = results[2] if len(results) > 2 else None
+        # Normalize and convert to view format
+        normalized_tickets = normalize_ticket_list(raw_tickets)
         
-        # Process total counts
-        total_stats = {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}
-        for result in total_results:
-            status = result.get('_id', 'processing')
-            total_stats[status] = result.get('count', 0)
-        
-        # Process daily breakdown
-        date_map = {}
-        for result in daily_results:
-            date_str = result['_id']
-            stats = {stat['status']: stat['count'] for stat in result.get('stats', [])}
-            date_map[date_str] = stats
-        
-        # Generate all dates in range
-        dates = []
-        completed_data = []
-        processing_data = []
-        failed_data = []
-        callback_data = []
-        
-        current = start
-        while current <= end:
-            date_str = current.strftime('%Y-%m-%d')
-            dates.append(current.strftime('%b %d, %Y'))
-            
-            stats = date_map.get(date_str, {})
-            completed_data.append(stats.get('completed', 0))
-            processing_data.append(stats.get('processing', 0))
-            failed_data.append(stats.get('failed', 0))
-            callback_data.append(stats.get('callback', 0))
-            
-            current += timedelta(days=1)
-        
-        response_data = {
-            'success': True,
-            'start_date': start_date,
-            'end_date': end_date,
-            'total_days': len(dates),
-            'total_stats': total_stats,
-            'daily_breakdown': {
-                'dates': dates,
-                'completed': completed_data,
-                'processing': processing_data,
-                'failed': failed_data,
-                'callback': callback_data
-            }
-        }
-        
-        # Add per-client data if requested
-        if client_results:
-            client_data = {}
-            for result in client_results:
-                client_id = str(result['_id']) if result['_id'] else 'Unknown'
-                stats = {stat['status']: stat['count'] for stat in result.get('stats', [])}
-                client_data[client_id] = {
-                    'completed': stats.get('completed', 0),
-                    'processing': stats.get('processing', 0),
-                    'failed': stats.get('failed', 0),
-                    'callback': stats.get('callback', 0),
-                    'total': sum(stats.values())
-                }
-            
-            response_data['client_breakdown'] = client_data
-        
-        await set_cache(cache_key, response_data, expire=600)
-        return JSONResponse(content=response_data)
+        raw_view_data = []
+        for ticket in normalized_tickets:
+            raw_view_data.append({
+                'date': extract_date(ticket).strftime('%Y-%m-%d'),
+                'client_id': str(ticket.get('client_id', '')),
+                'status': parse_ticket_status(ticket),
+                'count': 1
+            })
     
-    except asyncio.TimeoutError:
-        logger.error(f"Query timeout for range: {start_date} to {end_date}")
-        return JSONResponse(
-            status_code=504,
-            content={"error": "Query timeout. Try a smaller date range."}
-        )
-    except Exception as e:
-        logger.error(f"Error in get_ticket_data_range: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": "Internal server error"})
-
-
-@app.get("/reload-data")
-async def reload_data():
-    """Clear all caches and return database statistics"""
-    if mongo_client is None or collection is None:
-        return JSONResponse(status_code=503, content={"status": "error", "message": "Database unavailable"})
+    # Transform all in memory
+    total_stats = init_stats_dict()
+    daily_data = {}
+    client_breakdown = {}
     
+    for entry in raw_view_data:
+        date = entry.get('date')
+        client_id = entry.get('client_id')
+        status = entry.get('status')
+        count = entry.get('count', 1)
+        
+        if status in total_stats:
+            total_stats[status] += count
+        
+        if date not in daily_data:
+            daily_data[date] = init_stats_dict()
+        if status in daily_data[date]:
+            daily_data[date][status] += count
+        
+        if client_id not in client_breakdown:
+            client_breakdown[client_id] = {**init_stats_dict(), "total": 0}
+        if status in client_breakdown[client_id]:
+            client_breakdown[client_id][status] += count
+            client_breakdown[client_id]["total"] += count
+    
+    # Format response
+    dates = sorted(daily_data.keys())
+    daily_breakdown = {
+        "dates": [datetime.strptime(d, "%Y-%m-%d").strftime("%b %d") for d in dates] if dates else [],
+        "completed": [daily_data[d]["completed"] for d in dates] if dates else [],
+        "processing": [daily_data[d]["processing"] for d in dates] if dates else [],
+        "failed": [daily_data[d]["failed"] for d in dates] if dates else [],
+        "callback": [daily_data[d]["callback"] for d in dates] if dates else []
+    }
+    
+    response_data = {
+        "success": True,
+        "total_days": (end - start).days + 1,
+        "total_stats": total_stats,
+        "daily_breakdown": daily_breakdown,
+        "client_breakdown": client_breakdown
+    }
+    
+    await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
+    return JSONResponse(content=response_data)
+
+@app.get("/api/refresh-view")
+async def manual_refresh_view():
+    """Manually trigger materialized view refresh"""
     try:
-        await clear_cache_pattern("*")
-        
-        # Crash fix: Add timeout
-        count = await asyncio.wait_for(
-            collection.count_documents({}),
-            timeout=10.0
-        )
-        
-        # Performance: Trigger cache warming
-        asyncio.create_task(warm_cache_today())
-        
+        await refresh_materialized_view()
+        return JSONResponse(content={"status": "success", "message": "View refreshed"})
+    except Exception as e:
+        logger.error(f"Manual refresh failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/api/refresh-view-full")
+async def manual_refresh_view_full():
+    """Manually trigger FULL materialized view refresh"""
+    try:
+        duration = await refresh_materialized_view_full()
         return JSONResponse(content={
             "status": "success",
-            "message": f"Reloaded. {count:,} documents.",
-            "cache_warming": "started"
+            "message": f"Full view refresh completed in {duration:.1f}s"
         })
-    except asyncio.TimeoutError:
-        return JSONResponse(status_code=504, content={"status": "error", "message": "Timeout counting documents"})
     except Exception as e:
-        logger.error(f"Error in reload_data: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": "Internal server error"})
+        logger.error(f"Full refresh failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@app.get("/reload-data")
+@require_db
+async def reload_data():
+    """Reload data - clear cache and refresh view"""
+    await clear_cache_pattern("*")
+    await refresh_materialized_view()
+    
+    main_count = await collection.count_documents({})
+    view_count = await materialized_view.count_documents({}) if materialized_view is not None else 0
+    
+    return JSONResponse(content={
+        "status": "success",
+        "message": f"Reloaded. Main: {main_count:,} docs. View: {view_count:,} entries."
+    })
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info",
-        access_log=True
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
