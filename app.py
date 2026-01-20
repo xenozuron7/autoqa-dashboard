@@ -8,21 +8,24 @@ load_dotenv(dotenv_path=env_path)
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReadPreference
 import redis.asyncio as aioredis
 from datetime import datetime, timedelta
 from dateutil import parser
 import json
 import time
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable, Any, AsyncIterator
 import logging
 import traceback
 import asyncio
 from functools import wraps
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import hashlib
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,18 +37,31 @@ logger = logging.getLogger(__name__)
 mongo_client = None
 db = None
 collection = None
-materialized_view = None
 redis_client = None
 scheduler = AsyncIOScheduler()
 
-# Constants
+# Constants for MILLIONS of records
 MAIN_COLLECTION_NAME = "auto_qa_results_demo"
-VIEW_COLLECTION_NAME = "ticket_summary_materialized_view"
 DEFAULT_CACHE_TTL = 300
-VIEW_CACHE_TTL = 600
-CLIENT_LIST_CACHE_TTL = 3600
-CLIENT_LIST_DEFAULT_LIMIT = 1000
+VIEW_CACHE_TTL = 1800
+CLIENT_LIST_CACHE_TTL = 7200
 INCREMENTAL_REFRESH_DAYS = 7
+
+# Streaming and batching - critical for millions of records
+STREAM_BATCH_SIZE = 1000          # Process 1k docs at a time
+MAX_MEMORY_BATCH = 5000           # Max docs in memory at once
+CURSOR_BATCH_SIZE = 500           # MongoDB cursor batch size
+PARALLEL_DATE_LIMIT = 5           # Max parallel date processing
+AGGREGATION_TIMEOUT_MS = 30000    # 30 second timeout
+
+# Redis configuration for millions
+REDIS_PIPELINE_SIZE = 100         # Batch Redis operations
+MATERIALIZED_VIEW_PREFIX = "matview:"
+MATERIALIZED_VIEW_TTL = 86400
+
+# Smart limits based on data volume
+SMALL_CLIENT_THRESHOLD = 1000     # Clients with <1k tickets
+LARGE_CLIENT_THRESHOLD = 100000   # Clients with >100k tickets
 
 # Rate limiting
 RATE_LIMIT_REQUESTS = 100
@@ -54,15 +70,19 @@ rate_limit_storage = defaultdict(list)
 
 # Cache metrics
 cache_metrics = {
-    "hits": 0,
-    "misses": 0,
-    "total_requests": 0,
-    "hit_rate": 0.0,
+    "hits": 0, "misses": 0, "total_requests": 0, "hit_rate": 0.0,
     "by_endpoint": defaultdict(lambda: {"hits": 0, "misses": 0})
 }
 
+# Memory monitoring
+memory_stats = {
+    "peak_batch_size": 0,
+    "total_processed": 0,
+    "streaming_queries": 0
+}
+
 # ============================================================================
-# RATE LIMITING MIDDLEWARE
+# RATE LIMITING
 # ============================================================================
 
 async def check_rate_limit(request: Request) -> bool:
@@ -86,123 +106,50 @@ def rate_limit(func: Callable):
     @wraps(func)
     async def wrapper(*args, **kwargs):
         request = kwargs.get('request') or (args[0] if args and isinstance(args[0], Request) else None)
-        
         if request and not await check_rate_limit(request):
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "error": "Rate limit exceeded",
-                    "message": f"Maximum {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds"
-                }
-            )
-        
+            return JSONResponse(status_code=429, content={
+                "error": "Rate limit exceeded",
+                "message": f"Maximum {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds"
+            })
         return await func(*args, **kwargs)
     return wrapper
 
 # ============================================================================
-# DATA VALIDATION & NORMALIZATION (Handle structured + unstructured data)
+# DATA NORMALIZATION (Lightweight for streaming)
 # ============================================================================
 
-def safe_get_field(document: dict, field: str, default=None, expected_type=None):
-    """
-    Safely extract field from document with type checking
-    Handles missing fields, wrong types, nested data
-    """
-    try:
-        value = document.get(field, default)
-        
-        if value is None:
-            return default
-        
-        if expected_type == str:
-            return str(value)
-        elif expected_type == int:
-            return int(value) if isinstance(value, (int, float)) else default
-        elif expected_type == datetime:
-            if isinstance(value, datetime):
-                return value
-            elif isinstance(value, str):
-                return parser.parse(value)
-            else:
-                return default
-        
-        return value
-        
-    except Exception as e:
-        logger.warning(f"Failed to extract {field}: {e}")
-        return default
-
 def normalize_ticket_document(raw_doc: dict) -> dict:
-    """
-    Normalize unstructured/semi-structured ticket document
-    Handles missing fields, wrong types, nested structures
-    """
+    """Lightweight normalization for streaming - minimal processing"""
     try:
-        # Extract created_at
-        created_at = None
-        
-        if 'created_at' in raw_doc:
-            created_at_raw = raw_doc['created_at']
-            
-            if isinstance(created_at_raw, datetime):
-                created_at = created_at_raw
-            elif isinstance(created_at_raw, str):
-                try:
-                    created_at = parser.parse(created_at_raw)
-                except:
-                    pass
-            elif isinstance(created_at_raw, dict) and '$date' in created_at_raw:
-                try:
-                    created_at = parser.parse(created_at_raw['$date'])
-                except:
-                    pass
-        
-        if created_at is None:
-            if 'updated_at' in raw_doc:
-                created_at = safe_get_field(raw_doc, 'updated_at', datetime.now(), datetime)
+        created_at = raw_doc.get('created_at')
+        if not isinstance(created_at, datetime):
+            if isinstance(created_at, str):
+                created_at = parser.parse(created_at)
+            elif isinstance(created_at, dict) and '$date' in created_at:
+                created_at = parser.parse(created_at['$date'])
             else:
                 created_at = datetime.now()
         
-        # Extract client_id
-        client_id = safe_get_field(raw_doc, 'client_id', 'unknown', str)
+        client_id = raw_doc.get('client_id') or 'unknown'
+        if not isinstance(client_id, str):
+            client_id = str(client_id)
         
-        if client_id == 'unknown' and 'client' in raw_doc:
-            if isinstance(raw_doc['client'], dict):
-                client_id = safe_get_field(raw_doc['client'], 'id', 'unknown', str)
-            elif isinstance(raw_doc['client'], str):
-                client_id = raw_doc['client']
-        
-        # Extract status fields
-        auto_qa_status = safe_get_field(raw_doc, 'auto_qa_status', '', str)
-        request_status = safe_get_field(raw_doc, 'request_status', '', str)
-        
-        # Check nested status
-        if not auto_qa_status and 'qa' in raw_doc:
-            if isinstance(raw_doc['qa'], dict):
-                auto_qa_status = safe_get_field(raw_doc['qa'], 'status', '', str)
-        
-        if not request_status and 'request' in raw_doc:
-            if isinstance(raw_doc['request'], dict):
-                request_status = safe_get_field(raw_doc['request'], 'status', '', str)
-        
-        # Extract ticket_id
-        ticket_id = safe_get_field(raw_doc, 'ticket_id', None, str)
-        if not ticket_id:
-            ticket_id = safe_get_field(raw_doc, '_id', 'unknown', str)
+        auto_qa_status = str(raw_doc.get('auto_qa_status', '')).lower()
+        request_status = str(raw_doc.get('request_status', '')).lower()
+        ticket_id = raw_doc.get('ticket_id') or raw_doc.get('_id') or 'unknown'
         
         return {
-            'ticket_id': ticket_id,
+            'ticket_id': str(ticket_id),
             'client_id': client_id,
             'created_at': created_at,
             'auto_qa_status': auto_qa_status,
             'request_status': request_status,
             'normalized': True
         }
-        
     except Exception as e:
-        logger.error(f"Failed to normalize document: {e}")
+        logger.error(f"Normalization error: {e}")
         return {
-            'ticket_id': 'error',
+            'ticket_id': 'unknown',
             'client_id': 'unknown',
             'created_at': datetime.now(),
             'auto_qa_status': '',
@@ -211,9 +158,9 @@ def normalize_ticket_document(raw_doc: dict) -> dict:
         }
 
 def parse_ticket_status(ticket: dict) -> str:
-    """Determine ticket status from auto_qa_status"""
-    auto_qa_status = str(ticket.get('auto_qa_status', '')).lower()
-    request_status = str(ticket.get('request_status', '')).lower()
+    """Fast status parsing"""
+    auto_qa_status = ticket.get('auto_qa_status', '')
+    request_status = ticket.get('request_status', '')
     
     if auto_qa_status == 'complete':
         return 'completed'
@@ -224,158 +171,242 @@ def parse_ticket_status(ticket: dict) -> str:
     return 'processing'
 
 def extract_date(ticket: dict) -> datetime:
-    """Extract and normalize date from ticket"""
-    date_obj = ticket.get('created_at') or ticket.get('updated_at')
-    
-    if not date_obj:
-        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    """Fast date extraction"""
+    date_obj = ticket.get('created_at')
     
     if isinstance(date_obj, datetime):
         return date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    if isinstance(date_obj, str):
-        try:
-            return parser.parse(date_obj).replace(hour=0, minute=0, second=0, microsecond=0)
-        except:
-            pass
-    
-    if isinstance(date_obj, dict) and '$date' in date_obj:
-        try:
-            return parser.parse(date_obj['$date']).replace(hour=0, minute=0, second=0, microsecond=0)
-        except:
-            pass
-    
     return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-# ============================================================================
-# UTILITY FUNCTIONS
-# ============================================================================
-
-def get_date_range(end_date: datetime, days: int = 7) -> tuple:
-    """Get start and end datetime for date range"""
-    start = (end_date - timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    end = end_date.replace(hour=23, minute=59, second=59, microsecond=999)
-    return start, end
-
-def format_date_labels(end_date: datetime, days: int = 7) -> List[str]:
-    """Generate date labels for charts"""
-    return [(end_date - timedelta(days=i)).strftime('%b %d, %Y') for i in range(days-1, -1, -1)]
 
 def init_stats_dict() -> dict:
     """Initialize empty stats dictionary"""
     return {'completed': 0, 'processing': 0, 'failed': 0, 'callback': 0}
 
 # ============================================================================
-# DATABASE READ OPERATIONS (ONLY collection.find() - NO AGGREGATION)
+# STATUS MATCH CONDITIONS (Push filtering to MongoDB)
 # ============================================================================
 
-async def fetch_tickets_raw(
-    match_conditions: dict,
-    projection: dict = None,
-    limit: int = 10000,
-    sort: List[tuple] = None
-) -> List[dict]:
+def build_status_match_conditions(status: str) -> dict:
     """
-    Fetch tickets using ONLY collection.find()
-    NO aggregation, NO distinct - pure find query
+    Build MongoDB query to filter by status at database level
+    This avoids loading unnecessary documents into memory
+    """
+    status_lower = status.lower()
+    
+    if status_lower == 'completed':
+        return {"auto_qa_status": {"$regex": "^complete$", "$options": "i"}}
+    elif status_lower == 'callback':
+        return {"auto_qa_status": {"$regex": "^callback$", "$options": "i"}}
+    elif status_lower == 'failed':
+        return {
+            "$or": [
+                {"auto_qa_status": {"$regex": "^failed$", "$options": "i"}},
+                {"request_status": {"$regex": "^failed$", "$options": "i"}}
+            ]
+        }
+    elif status_lower == 'processing':
+        return {
+            "auto_qa_status": {
+                "$not": {"$regex": "^(complete|callback|failed)$", "$options": "i"}
+            },
+            "$or": [
+                {"request_status": {"$exists": False}},
+                {"request_status": {"$not": {"$regex": "^failed$", "$options": "i"}}}
+            ]
+        }
+    
+    return {}
+
+# ============================================================================
+# STREAMING DATABASE OPERATIONS (for MILLIONS of records)
+# ============================================================================
+
+async def stream_tickets(
+    match_conditions: dict,
+    projection: dict,
+    batch_size: int = STREAM_BATCH_SIZE,
+    skip: int = 0,
+    sort: List[tuple] = None
+) -> AsyncIterator[List[dict]]:
+    """
+    STREAM tickets in batches - never loads all into memory
+    Critical for millions of records
     """
     try:
-        query = collection.find(match_conditions, projection)
+        cursor = collection.find(match_conditions, projection)
         
         if sort:
-            query = query.sort(sort)
+            cursor = cursor.sort(sort)
         
-        if limit:
-            query = query.limit(limit)
+        cursor = cursor.batch_size(CURSOR_BATCH_SIZE)
         
-        # Fetch raw documents from database
-        tickets_data = await query.to_list(length=limit)
+        if skip > 0:
+            cursor = cursor.skip(skip)
         
-        logger.info(f"Fetched {len(tickets_data)} raw tickets using collection.find()")
-        return tickets_data
+        batch = []
+        async for document in cursor:
+            batch.append(document)
+            
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+                memory_stats["streaming_queries"] += 1
+        
+        if batch:
+            yield batch
+            
+        logger.info(f"Streamed documents with batch_size={batch_size}")
         
     except Exception as e:
-        logger.error(f"Failed to fetch tickets: {e}")
-        return []
+        logger.error(f"Streaming error: {e}")
+        yield []
 
-async def fetch_view_raw(
+async def stream_tickets_with_limit(
     match_conditions: dict,
-    projection: dict = None,
-    limit: int = 10000,
+    projection: dict,
+    max_results: int = 1000,
     sort: List[tuple] = None
+) -> AsyncIterator[dict]:
+    """
+    Stream tickets but yield one at a time, stop at max_results
+    Memory efficient - no list building
+    """
+    try:
+        cursor = collection.find(match_conditions, projection)
+        
+        if sort:
+            cursor = cursor.sort(sort)
+        
+        cursor = cursor.batch_size(CURSOR_BATCH_SIZE).limit(max_results)
+        
+        count = 0
+        async for document in cursor:
+            yield document
+            count += 1
+            
+            if count >= max_results:
+                break
+        
+        logger.info(f"Streamed {count} documents (limit={max_results})")
+        
+    except Exception as e:
+        logger.error(f"Streaming error: {e}")
+
+async def count_tickets_estimate(match_conditions: dict = None) -> int:
+    """
+    FAST count using estimated_document_count or aggregation
+    Avoids slow count_documents on millions of records
+    """
+    try:
+        if not match_conditions or match_conditions == {}:
+            count = await collection.estimated_document_count()
+            return count
+        else:
+            pipeline = [
+                {"$match": match_conditions},
+                {"$count": "total"}
+            ]
+            cursor = collection.aggregate(pipeline, allowDiskUse=True)
+            result = await cursor.to_list(length=1)
+            return result[0]["total"] if result else 0
+            
+    except Exception as e:
+        logger.error(f"Count error: {e}")
+        return 0
+
+async def fetch_tickets_cursor_limited(
+    match_conditions: dict,
+    projection: dict,
+    limit: int = 10000,
+    sort: List[tuple] = None,
+    hint_index: str = None
 ) -> List[dict]:
     """
-    Fetch from materialized view using ONLY .find()
-    NO aggregation
+    Fetch with hard limits - prevents memory overflow
+    For millions: NEVER fetch without limit
     """
-    if materialized_view is None:
-        return []
-    
     try:
-        query = materialized_view.find(match_conditions, projection)
+        safe_limit = min(limit, 50000)
+        
+        cursor = collection.find(match_conditions, projection)
+        
+        if hint_index:
+            cursor = cursor.hint(hint_index)
+        
+        cursor = cursor.batch_size(CURSOR_BATCH_SIZE)
         
         if sort:
-            query = query.sort(sort)
+            cursor = cursor.sort(sort)
         
-        if limit:
-            query = query.limit(limit)
+        cursor = cursor.limit(safe_limit)
         
-        view_data = await query.to_list(length=limit)
+        tickets = await cursor.to_list(length=safe_limit)
         
-        logger.info(f"Fetched {len(view_data)} raw entries using view.find()")
-        return view_data
+        logger.info(f"Fetched {len(tickets)} tickets (limit={safe_limit})")
+        return tickets
         
     except Exception as e:
-        logger.error(f"Failed to fetch from view: {e}")
+        logger.error(f"Fetch error: {e}")
         return []
 
 # ============================================================================
-# IN-MEMORY TRANSFORMATION FUNCTIONS (PURE - NO DATABASE ACCESS)
+# STREAMING AGGREGATION (Process millions without loading all)
 # ============================================================================
 
-def normalize_ticket_list(raw_tickets: List[dict]) -> List[dict]:
+async def streaming_aggregate_by_client_status(
+    match_conditions: dict,
+    batch_size: int = STREAM_BATCH_SIZE
+) -> Dict[str, Dict[str, int]]:
     """
-    Normalize list of tickets handling structured/unstructured data
-    Returns new list of normalized tickets
+    Stream-based aggregation for MILLIONS of records
+    Processes in batches, never loads all into memory
     """
-    normalized = []
-    for ticket in raw_tickets:
-        normalized.append(normalize_ticket_document(ticket))
-    return normalized
-
-def count_by_status(data: List[dict]) -> Dict[str, int]:
-    """Count items by status in memory"""
-    counts = init_stats_dict()
+    client_stats = {}
+    total_processed = 0
     
-    for item in data:
-        status = parse_ticket_status(item)
-        if status in counts:
-            counts[status] += 1
+    projection = {
+        "client_id": 1,
+        "auto_qa_status": 1,
+        "request_status": 1,
+        "_id": 0
+    }
     
-    return counts
-
-def count_by_client_and_status(data: List[dict]) -> Dict[str, Dict[str, int]]:
-    """
-    Count items by client and status in memory
-    Returns: {client_id: {status: count}}
-    """
-    client_counts = {}
-    
-    for item in data:
-        client_id = str(item.get('client_id', 'unknown'))
-        status = parse_ticket_status(item)
+    try:
+        async for batch in stream_tickets(match_conditions, projection, batch_size):
+            for ticket in batch:
+                normalized = normalize_ticket_document(ticket)
+                client_id = normalized.get('client_id', 'unknown')
+                status = parse_ticket_status(normalized)
+                
+                if client_id not in client_stats:
+                    client_stats[client_id] = init_stats_dict()
+                
+                if status in client_stats[client_id]:
+                    client_stats[client_id][status] += 1
+            
+            total_processed += len(batch)
+            
+            if total_processed % 50000 == 0:
+                logger.info(f"Processed {total_processed:,} tickets, {len(client_stats):,} unique clients")
         
-        if client_id not in client_counts:
-            client_counts[client_id] = init_stats_dict()
+        memory_stats["peak_batch_size"] = max(memory_stats["peak_batch_size"], total_processed)
+        logger.info(f"Completed streaming aggregation: {total_processed:,} tickets, {len(client_stats):,} clients")
         
-        client_counts[client_id][status] += 1
-    
-    return client_counts
+        return client_stats
+        
+    except Exception as e:
+        logger.error(f"Streaming aggregation error: {e}")
+        return client_stats
 
-def count_by_date_and_status(data: List[dict], start_date: datetime, days: int) -> Dict[str, Dict[str, int]]:
+async def streaming_aggregate_by_date_status(
+    match_conditions: dict,
+    start_date: datetime,
+    days: int,
+    batch_size: int = STREAM_BATCH_SIZE
+) -> Dict[str, Dict[str, int]]:
     """
-    Count items by date and status in memory
-    Returns: {date_str: {status: count}}
+    Stream-based date aggregation for MILLIONS
     """
     daily_counts = {}
     
@@ -384,60 +415,235 @@ def count_by_date_and_status(data: List[dict], start_date: datetime, days: int) 
         date_str = date.strftime('%Y-%m-%d')
         daily_counts[date_str] = init_stats_dict()
     
-    for item in data:
-        item_date = extract_date(item)
-        date_str = item_date.strftime('%Y-%m-%d')
-        
-        if date_str in daily_counts:
-            status = parse_ticket_status(item)
-            if status in daily_counts[date_str]:
-                daily_counts[date_str][status] += 1
+    projection = {
+        "created_at": 1,
+        "auto_qa_status": 1,
+        "request_status": 1,
+        "_id": 0
+    }
     
-    return daily_counts
-
-def filter_by_status(data: List[dict], target_status: str) -> List[dict]:
-    """Filter in-memory data by status"""
-    return [item for item in data if parse_ticket_status(item) == target_status]
-
-def filter_by_client(data: List[dict], client_id: str) -> List[dict]:
-    """Filter in-memory data by client_id"""
-    return [item for item in data if str(item.get('client_id', '')) == str(client_id)]
-
-def filter_by_date_range(data: List[dict], start: datetime, end: datetime) -> List[dict]:
-    """Filter in-memory data by date range"""
-    filtered = []
-    for item in data:
-        item_date = extract_date(item)
-        if start <= item_date <= end:
-            filtered.append(item)
-    return filtered
-
-def sort_by_date(data: List[dict], descending: bool = True) -> List[dict]:
-    """Sort in-memory data by date"""
-    sorted_data = data.copy()
-    sorted_data.sort(key=lambda x: extract_date(x), reverse=descending)
-    return sorted_data
-
-def extract_unique_values(data: List[dict], field: str) -> List[str]:
-    """Extract unique values for a field from in-memory data"""
-    unique_values = set()
-    for item in data:
-        value = item.get(field)
-        if value is not None:
-            unique_values.add(str(value))
-    return sorted(list(unique_values))
-
-def paginate_data(data: List[Any], offset: int, limit: int) -> List[Any]:
-    """Paginate in-memory data"""
-    return data[offset:offset + limit]
-
-def search_in_list(items: List[str], query: str) -> List[str]:
-    """Search for items matching query"""
-    query_lower = query.lower()
-    return [item for item in items if query_lower in item.lower()]
+    total_processed = 0
+    
+    try:
+        async for batch in stream_tickets(match_conditions, projection, batch_size):
+            for ticket in batch:
+                normalized = normalize_ticket_document(ticket)
+                date_str = extract_date(normalized).strftime('%Y-%m-%d')
+                
+                if date_str in daily_counts:
+                    status = parse_ticket_status(normalized)
+                    if status in daily_counts[date_str]:
+                        daily_counts[date_str][status] += 1
+            
+            total_processed += len(batch)
+            
+            if total_processed % 50000 == 0:
+                logger.info(f"Date aggregation: {total_processed:,} tickets processed")
+        
+        logger.info(f"Completed date aggregation: {total_processed:,} tickets")
+        return daily_counts
+        
+    except Exception as e:
+        logger.error(f"Date aggregation error: {e}")
+        return daily_counts
 
 # ============================================================================
-# CACHING LAYER WITH METRICS
+# PARALLEL PROCESSING (for multiple date ranges)
+# ============================================================================
+
+async def parallel_aggregate_dates(dates: List[str], semaphore_limit: int = PARALLEL_DATE_LIMIT) -> Dict[str, Dict]:
+    """
+    Process multiple dates in parallel with concurrency control
+    Prevents overwhelming MongoDB with millions of concurrent queries
+    """
+    semaphore = asyncio.Semaphore(semaphore_limit)
+    
+    async def process_single_date(date_str: str):
+        async with semaphore:
+            try:
+                target_date = datetime.strptime(date_str, "%Y-%m-%d")
+                start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end = target_date.replace(hour=23, minute=59, second=59, microsecond=999)
+                
+                match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+                
+                client_stats = await streaming_aggregate_by_client_status(match_conditions)
+                
+                logger.info(f"Completed aggregation for {date_str}: {len(client_stats)} clients")
+                return date_str, client_stats
+                
+            except Exception as e:
+                logger.error(f"Error processing {date_str}: {e}")
+                return date_str, {}
+    
+    tasks = [process_single_date(date) for date in dates]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    date_results = {}
+    for result in results:
+        if isinstance(result, tuple) and len(result) == 2:
+            date_str, stats = result
+            date_results[date_str] = stats
+    
+    return date_results
+
+# ============================================================================
+# REDIS BULK OPERATIONS (for millions of cache entries)
+# ============================================================================
+
+async def bulk_cache_set(items: Dict[str, Any], ttl: int = MATERIALIZED_VIEW_TTL):
+    """
+    Bulk Redis operations using pipeline - critical for millions
+    """
+    if redis_client is None or not items:
+        return
+    
+    try:
+        item_list = list(items.items())
+        
+        for i in range(0, len(item_list), REDIS_PIPELINE_SIZE):
+            chunk = item_list[i:i + REDIS_PIPELINE_SIZE]
+            
+            pipe = redis_client.pipeline()
+            for key, value in chunk:
+                pipe.setex(key, ttl, json.dumps(value))
+            
+            await pipe.execute()
+        
+        logger.info(f"Bulk cached {len(items)} items")
+        
+    except Exception as e:
+        logger.error(f"Bulk cache error: {e}")
+
+async def bulk_cache_get(keys: List[str]) -> Dict[str, Any]:
+    """
+    Bulk Redis retrieval using pipeline
+    """
+    if redis_client is None or not keys:
+        return {}
+    
+    try:
+        results = {}
+        
+        for i in range(0, len(keys), REDIS_PIPELINE_SIZE):
+            chunk = keys[i:i + REDIS_PIPELINE_SIZE]
+            
+            pipe = redis_client.pipeline()
+            for key in chunk:
+                pipe.get(key)
+            
+            values = await pipe.execute()
+            
+            for key, value in zip(chunk, values):
+                if value:
+                    results[key] = json.loads(value)
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Bulk cache get error: {e}")
+        return {}
+
+# ============================================================================
+# REDIS-BACKED MATERIALIZED VIEW (for millions)
+# ============================================================================
+
+async def build_materialized_view_for_date(date_str: str) -> Dict:
+    """
+    Build aggregated view using STREAMING for millions of records
+    """
+    try:
+        target_date = datetime.strptime(date_str, "%Y-%m-%d")
+        start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = target_date.replace(hour=23, minute=59, second=59, microsecond=999)
+        
+        match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+        
+        client_stats = await streaming_aggregate_by_client_status(match_conditions)
+        
+        if client_stats and redis_client is not None:
+            key = f"{MATERIALIZED_VIEW_PREFIX}{date_str}"
+            await redis_client.setex(key, MATERIALIZED_VIEW_TTL, json.dumps(client_stats))
+        
+        return client_stats
+        
+    except Exception as e:
+        logger.error(f"Build view error for {date_str}: {e}")
+        return {}
+
+async def get_materialized_view_from_redis(date: str) -> Optional[Dict]:
+    """Get pre-aggregated data from Redis"""
+    if redis_client is None:
+        return None
+    
+    try:
+        key = f"{MATERIALIZED_VIEW_PREFIX}{date}"
+        data = await redis_client.get(key)
+        
+        if data:
+            logger.info(f"Materialized view HIT: {date}")
+            return json.loads(data)
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Redis get error: {e}")
+        return None
+
+async def refresh_materialized_views_incremental():
+    """
+    Refresh views for recent dates using parallel processing
+    """
+    try:
+        start_time = time.time()
+        logger.info(f"Starting incremental view refresh (last {INCREMENTAL_REFRESH_DAYS} days)...")
+        
+        today = datetime.now()
+        dates = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(INCREMENTAL_REFRESH_DAYS)]
+        
+        results = await parallel_aggregate_dates(dates, semaphore_limit=PARALLEL_DATE_LIMIT)
+        
+        cache_items = {f"{MATERIALIZED_VIEW_PREFIX}{date}": stats for date, stats in results.items() if stats}
+        await bulk_cache_set(cache_items, ttl=MATERIALIZED_VIEW_TTL)
+        
+        duration = time.time() - start_time
+        logger.info(f"Incremental refresh completed in {duration:.1f}s")
+        
+        return duration
+        
+    except Exception as e:
+        logger.error(f"Incremental refresh error: {e}")
+        return None
+
+async def refresh_materialized_views_full():
+    """
+    Full refresh for last 30 days using parallel processing
+    """
+    try:
+        start_time = time.time()
+        logger.info("Starting FULL view refresh (last 30 days)...")
+        
+        today = datetime.now()
+        dates = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30)]
+        
+        results = await parallel_aggregate_dates(dates, semaphore_limit=PARALLEL_DATE_LIMIT)
+        
+        cache_items = {f"{MATERIALIZED_VIEW_PREFIX}{date}": stats for date, stats in results.items() if stats}
+        await bulk_cache_set(cache_items, ttl=MATERIALIZED_VIEW_TTL)
+        
+        duration = time.time() - start_time
+        logger.info(f"Full refresh completed in {duration:.1f}s")
+        
+        return duration
+        
+    except Exception as e:
+        logger.error(f"Full refresh error: {e}")
+        return None
+
+refresh_materialized_view = refresh_materialized_views_incremental
+
+# ============================================================================
+# CACHING LAYER
 # ============================================================================
 
 async def get_cache(key: str, endpoint: str = "unknown") -> Optional[dict]:
@@ -445,7 +651,6 @@ async def get_cache(key: str, endpoint: str = "unknown") -> Optional[dict]:
     if redis_client is None:
         cache_metrics["misses"] += 1
         cache_metrics["total_requests"] += 1
-        cache_metrics["by_endpoint"][endpoint]["misses"] += 1
         return None
     
     try:
@@ -456,25 +661,24 @@ async def get_cache(key: str, endpoint: str = "unknown") -> Optional[dict]:
             cache_metrics["hits"] += 1
             cache_metrics["by_endpoint"][endpoint]["hits"] += 1
             cache_metrics["hit_rate"] = (cache_metrics["hits"] / cache_metrics["total_requests"]) * 100
-            logger.info(f"CACHE HIT: {key} (endpoint: {endpoint})")
             return json.loads(data)
         else:
             cache_metrics["misses"] += 1
             cache_metrics["by_endpoint"][endpoint]["misses"] += 1
-            cache_metrics["hit_rate"] = (cache_metrics["hits"] / cache_metrics["total_requests"]) * 100
             return None
     except Exception as e:
         logger.error(f"Cache error: {e}")
-        cache_metrics["misses"] += 1
-        cache_metrics["total_requests"] += 1
         return None
 
-async def set_cache(key: str, data: dict, expire: int = DEFAULT_CACHE_TTL):
+async def set_cache(key: str, data: Any, expire: int = DEFAULT_CACHE_TTL):
     """Store data in Redis cache"""
     if redis_client is None:
         return
     try:
-        await redis_client.setex(key, expire, json.dumps(data))
+        if isinstance(data, (dict, list)):
+            await redis_client.setex(key, expire, json.dumps(data))
+        else:
+            await redis_client.setex(key, expire, str(data))
     except Exception as e:
         logger.error(f"Cache error: {e}")
 
@@ -494,103 +698,76 @@ async def clear_cache_pattern(pattern: str):
         logger.error(f"Cache error: {e}")
 
 # ============================================================================
-# CACHE WARMING
+# CLIENT LIST (Optimized for millions) - WITH FALLBACK
 # ============================================================================
 
-async def warm_cache():
-    """Pre-populate cache with hot data on startup"""
-    if mongo_client is None or redis_client is None:
-        logger.warning("Cannot warm cache - connections not ready")
+async def get_distinct_clients_from_db(limit: int = 10000) -> List[str]:
+    """
+    Fallback: Get distinct clients directly from MongoDB using aggregation
+    Optimized for millions of records
+    """
+    try:
+        if collection is None:
+            return []
+            
+        logger.info("Fetching distinct clients from database (fallback)...")
+        
+        # Use MongoDB's distinct operation - fast even on millions
+        distinct_clients = await collection.distinct("client_id", {"client_id": {"$ne": None, "$ne": "unknown"}})
+        
+        # Filter and sort
+        valid_clients = [str(c) for c in distinct_clients if c and str(c) != 'unknown']
+        valid_clients.sort()
+        
+        # Limit for safety
+        if len(valid_clients) > limit:
+            logger.warning(f"Limiting clients to {limit} from {len(valid_clients)}")
+            valid_clients = valid_clients[:limit]
+        
+        logger.info(f"Retrieved {len(valid_clients)} distinct clients from database")
+        return valid_clients
+        
+    except Exception as e:
+        logger.error(f"Error fetching distinct clients: {e}")
+        traceback.print_exc()
+        return []
+
+async def refresh_client_list_background():
+    """
+    Fetch unique clients using streaming for millions of records
+    """
+    if collection is None:
         return
     
     try:
-        logger.info("Starting cache warming...")
-        start_time = time.time()
+        logger.info("Background: Refreshing client list (streaming mode)...")
         
-        today = datetime.now().strftime('%Y-%m-%d')
+        unique_clients = set()
+        projection = {"client_id": 1, "_id": 0}
         
-        # Warm today's data
-        if materialized_view is not None:
-            raw_view_data = await fetch_view_raw(
-                match_conditions={"date": today},
-                projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
-                limit=5000,
-                sort=[("client_id", 1)]
-            )
+        async for batch in stream_tickets({}, projection, batch_size=STREAM_BATCH_SIZE):
+            for ticket in batch:
+                client_id = str(ticket.get('client_id', 'unknown'))
+                if client_id != 'unknown' and client_id:
+                    unique_clients.add(client_id)
             
-            if raw_view_data:
-                client_stats = {}
-                for entry in raw_view_data:
-                    client_id = entry.get("client_id")
-                    status = entry.get("status")
-                    count = entry.get("count", 0)
-                    
-                    if client_id not in client_stats:
-                        client_stats[client_id] = init_stats_dict()
-                    
-                    if status in client_stats[client_id]:
-                        client_stats[client_id][status] += count
-                
-                sorted_clients = sorted(client_stats.keys())[:100]
-                response_data = {
-                    'client_ids': sorted_clients,
-                    'completed': [client_stats[c]['completed'] for c in sorted_clients],
-                    'processing': [client_stats[c]['processing'] for c in sorted_clients],
-                    'failed': [client_stats[c]['failed'] for c in sorted_clients],
-                    'callback': [client_stats[c]['callback'] for c in sorted_clients]
-                }
-                await set_cache(f"ticket_data:{today}", response_data, expire=VIEW_CACHE_TTL)
-                logger.info("Warmed: Today's ticket data")
+            if len(unique_clients) % 10000 == 0:
+                logger.info(f"Extracted {len(unique_clients):,} unique clients...")
         
-        # Warm client list
-        await refresh_client_list_background()
-        logger.info("Warmed: Client list")
+        all_clients = sorted(list(unique_clients))
+        total_count = len(all_clients)
         
-        # Warm last 3 days
-        for i in range(1, 4):
-            past_date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            if materialized_view is not None:
-                raw_view_data = await fetch_view_raw(
-                    match_conditions={"date": past_date},
-                    projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
-                    limit=5000,
-                    sort=[("client_id", 1)]
-                )
-                
-                if raw_view_data:
-                    client_stats = {}
-                    for entry in raw_view_data:
-                        client_id = entry.get("client_id")
-                        status = entry.get("status")
-                        count = entry.get("count", 0)
-                        
-                        if client_id not in client_stats:
-                            client_stats[client_id] = init_stats_dict()
-                        
-                        if status in client_stats[client_id]:
-                            client_stats[client_id][status] += count
-                    
-                    sorted_clients = sorted(client_stats.keys())[:100]
-                    response_data = {
-                        'client_ids': sorted_clients,
-                        'completed': [client_stats[c]['completed'] for c in sorted_clients],
-                        'processing': [client_stats[c]['processing'] for c in sorted_clients],
-                        'failed': [client_stats[c]['failed'] for c in sorted_clients],
-                        'callback': [client_stats[c]['callback'] for c in sorted_clients]
-                    }
-                    await set_cache(f"ticket_data:{past_date}", response_data, expire=VIEW_CACHE_TTL)
+        await set_cache("all_clients_raw_list", all_clients, expire=CLIENT_LIST_CACHE_TTL)
+        await set_cache("client_count:all", total_count, expire=CLIENT_LIST_CACHE_TTL)
         
-        logger.info("Warmed: Last 3 days data")
-        
-        duration = time.time() - start_time
-        logger.info(f"Cache warming completed in {duration:.2f}s")
+        logger.info(f"Background: Cached {total_count:,} unique clients")
         
     except Exception as e:
-        logger.error(f"Cache warming failed: {e}")
+        logger.error(f"Client list refresh error: {e}")
         traceback.print_exc()
 
 # ============================================================================
-# DATABASE HELPERS
+# UTILITY FUNCTIONS
 # ============================================================================
 
 def require_db(func: Callable):
@@ -607,436 +784,190 @@ def require_db(func: Callable):
             return JSONResponse(status_code=500, content={"error": str(e)})
     return wrapper
 
-def build_date_match(start: datetime, end: datetime) -> dict:
-    """Build date match query"""
-    return {"created_at": {"$gte": start, "$lte": end}}
-
-# ============================================================================
-# CLIENT LIST WITH SEARCH
-# ============================================================================
-
-async def refresh_client_list_background():
-    """Background task - fetch all clients using only find()"""
-    if collection is None:
-        return
-    
-    try:
-        logger.info("Background: Refreshing client list...")
-        
-        if materialized_view is not None:
-            # Fetch all view entries using only find()
-            raw_view_data = await fetch_view_raw(
-                match_conditions={},
-                projection={"client_id": 1, "_id": 0},
-                limit=50000,
-                sort=None
-            )
-            
-            # Extract unique clients in memory
-            all_clients = extract_unique_values(raw_view_data, "client_id")
-            total_count = len(all_clients)
-            clients = all_clients[:CLIENT_LIST_DEFAULT_LIMIT]
-        else:
-            # Fetch all tickets using only find() and extract clients in memory
-            raw_tickets = await fetch_tickets_raw(
-                match_conditions={},
-                projection={"client_id": 1, "_id": 0},
-                limit=50000,
-                sort=None
-            )
-            
-            # Extract unique clients in memory
-            all_clients = extract_unique_values(raw_tickets, "client_id")
-            total_count = len(all_clients)
-            clients = all_clients[:CLIENT_LIST_DEFAULT_LIMIT]
-        
-        response_data = {
-            "client_ids": clients,
-            "total": total_count,
-            "limit": CLIENT_LIST_DEFAULT_LIMIT,
-            "offset": 0,
-            "has_more": len(clients) < total_count
-        }
-        
-        if redis_client is not None:
-            cache_key = f"all_clients:{CLIENT_LIST_DEFAULT_LIMIT}:0:all"
-            await set_cache(cache_key, response_data, expire=CLIENT_LIST_CACHE_TTL)
-            await set_cache("client_count:all", total_count, expire=CLIENT_LIST_CACHE_TTL)
-            await set_cache("all_clients_raw_list", all_clients, expire=CLIENT_LIST_CACHE_TTL)
-        
-        logger.info(f"Background: Cached {len(clients)}/{total_count} clients")
-        
-    except Exception as e:
-        logger.error(f"Background client refresh failed: {e}")
-
-# ============================================================================
-# MATERIALIZED VIEW (Using ONLY collection.find() + in-memory aggregation)
-# ============================================================================
-
-async def refresh_materialized_view_incremental():
-    """
-    Incremental refresh using ONLY collection.find()
-    All aggregation done in memory
-    """
-    if collection is None or materialized_view is None:
-        logger.warning("Collections not initialized")
-        return
-    
-    try:
-        start_time = time.time()
-        logger.info(f"Starting incremental view refresh (last {INCREMENTAL_REFRESH_DAYS} days)...")
-        
-        if collection.name != MAIN_COLLECTION_NAME or materialized_view.name != VIEW_COLLECTION_NAME:
-            logger.error("SAFETY: Wrong collection names")
-            return
-        
-        cutoff_date = datetime.now() - timedelta(days=INCREMENTAL_REFRESH_DAYS)
-        
-        # STEP 1: Fetch using ONLY collection.find()
-        match_conditions = {"created_at": {"$gte": cutoff_date}}
-        projection = {
-            "created_at": 1,
-            "updated_at": 1,
-            "client_id": 1,
-            "client": 1,
-            "auto_qa_status": 1,
-            "request_status": 1,
-            "qa": 1,
-            "request": 1,
-            "_id": 0
-        }
-        
-        raw_tickets = await fetch_tickets_raw(
-            match_conditions=match_conditions,
-            projection=projection,
-            limit=None
-        )
-        
-        logger.info(f"Fetched {len(raw_tickets)} raw tickets using collection.find()")
-        
-        # STEP 2: Normalize in memory
-        normalized_tickets = normalize_ticket_list(raw_tickets)
-        
-        # STEP 3: Aggregate in memory (not in database)
-        aggregated_data_dict = {}
-        
-        for ticket in normalized_tickets:
-            date_str = extract_date(ticket).strftime('%Y-%m-%d')
-            client_id = str(ticket.get('client_id', 'unknown'))
-            status = parse_ticket_status(ticket)
-            
-            key = (date_str, client_id, status)
-            
-            if key not in aggregated_data_dict:
-                aggregated_data_dict[key] = {
-                    "date": date_str,
-                    "client_id": client_id,
-                    "status": status,
-                    "count": 0
-                }
-            
-            aggregated_data_dict[key]["count"] += 1
-        
-        # STEP 4: Convert to list
-        aggregated_data = list(aggregated_data_dict.values())
-        
-        logger.info(f"Aggregated {len(aggregated_data)} entries in memory")
-        
-        # STEP 5: Delete old entries
-        date_strs = [(cutoff_date + timedelta(days=i)).strftime('%Y-%m-%d') 
-                     for i in range(INCREMENTAL_REFRESH_DAYS + 1)]
-        delete_result = await materialized_view.delete_many({"date": {"$in": date_strs}})
-        logger.info(f"Deleted {delete_result.deleted_count} old entries")
-        
-        # STEP 6: Insert new data
-        if aggregated_data:
-            batch_size = 1000
-            for i in range(0, len(aggregated_data), batch_size):
-                batch = aggregated_data[i:i+batch_size]
-                await materialized_view.insert_many(batch, ordered=False)
-        
-        duration = time.time() - start_time
-        logger.info(f"Incremental view refresh completed in {duration:.1f}s")
-        
-        if redis_client is not None:
-            await clear_cache_pattern("*")
-        
-        main_count = await collection.count_documents({})
-        view_count = await materialized_view.count_documents({})
-        logger.info(f"Main: {main_count:,} docs | View: {view_count:,} entries")
-        
-        return duration
-        
-    except Exception as e:
-        logger.error(f"View refresh failed: {e}")
-        traceback.print_exc()
-        return None
-
-async def refresh_materialized_view_full():
-    """
-    Full refresh using ONLY collection.find()
-    All aggregation done in memory
-    """
-    if collection is None or materialized_view is None:
-        logger.warning("Collections not initialized")
-        return
-    
-    try:
-        start_time = time.time()
-        logger.info("Starting FULL materialized view refresh...")
-        
-        if collection.name != MAIN_COLLECTION_NAME or materialized_view.name != VIEW_COLLECTION_NAME:
-            logger.error("SAFETY: Wrong collection names")
-            return
-        
-        # STEP 1: Fetch ALL tickets using ONLY collection.find()
-        projection = {
-            "created_at": 1,
-            "updated_at": 1,
-            "client_id": 1,
-            "client": 1,
-            "auto_qa_status": 1,
-            "request_status": 1,
-            "qa": 1,
-            "request": 1,
-            "_id": 0
-        }
-        
-        raw_tickets = await fetch_tickets_raw(
-            match_conditions={},
-            projection=projection,
-            limit=None
-        )
-        
-        logger.info(f"Fetched {len(raw_tickets)} total tickets using collection.find()")
-        
-        # STEP 2: Normalize in memory
-        normalized_tickets = normalize_ticket_list(raw_tickets)
-        
-        # STEP 3: Aggregate in memory
-        aggregated_data_dict = {}
-        
-        for ticket in normalized_tickets:
-            date_str = extract_date(ticket).strftime('%Y-%m-%d')
-            client_id = str(ticket.get('client_id', 'unknown'))
-            status = parse_ticket_status(ticket)
-            
-            key = (date_str, client_id, status)
-            
-            if key not in aggregated_data_dict:
-                aggregated_data_dict[key] = {
-                    "date": date_str,
-                    "client_id": client_id,
-                    "status": status,
-                    "count": 0
-                }
-            
-            aggregated_data_dict[key]["count"] += 1
-        
-        aggregated_data = list(aggregated_data_dict.values())
-        
-        logger.info(f"Aggregated {len(aggregated_data)} entries in memory")
-        
-        # STEP 4: Clear and insert
-        await materialized_view.delete_many({})
-        logger.info("Cleared entire view")
-        
-        if aggregated_data:
-            batch_size = 1000
-            for i in range(0, len(aggregated_data), batch_size):
-                batch = aggregated_data[i:i+batch_size]
-                await materialized_view.insert_many(batch, ordered=False)
-        
-        duration = time.time() - start_time
-        logger.info(f"Full view refresh completed in {duration:.1f}s")
-        
-        if redis_client is not None:
-            await clear_cache_pattern("*")
-        
-        return duration
-        
-    except Exception as e:
-        logger.error(f"Full view refresh failed: {e}")
-        traceback.print_exc()
-        return None
-
-refresh_materialized_view = refresh_materialized_view_incremental
-
 async def scheduled_refresh_with_adaptive_interval():
     """Smart scheduler that adapts based on refresh duration"""
     duration = await refresh_materialized_view()
-    
     if duration:
         next_interval_minutes = max(10, int(duration / 60 * 1.5))
-        logger.info(f"Next refresh scheduled in {next_interval_minutes} minutes")
+        logger.info(f"Next refresh in {next_interval_minutes} minutes")
         scheduler.reschedule_job('refresh_view', trigger='interval', minutes=next_interval_minutes)
 
 # ============================================================================
-# FASTAPI APP
+# LIFESPAN CONTEXT MANAGER (Simplified - No Index Creation)
 # ============================================================================
 
-app = FastAPI()
-app.add_middleware(GZipMiddleware, minimum_size=500)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize connections and scheduler"""
-    global mongo_client, db, collection, materialized_view, redis_client
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events
+    Optimized for read-only analytics dashboard with millions of records
+    """
+    # STARTUP
+    global mongo_client, db, collection, redis_client
     
+    logger.info("=" * 80)
+    logger.info("APPLICATION STARTUP - INITIALIZING CONNECTIONS")
+    logger.info("=" * 80)
+    
+    # MongoDB Connection
     try:
         MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+        
         mongo_client = AsyncIOMotorClient(
             MONGO_URI,
-            maxPoolSize=100,
-            minPoolSize=20,
-            maxIdleTimeMS=45000,
+            maxPoolSize=200,
+            minPoolSize=50,
+            maxIdleTimeMS=30000,
             serverSelectionTimeoutMS=5000,
-            retryWrites=True,
-            retryReads=True
+            retryWrites=False,
+            retryReads=True,
+            read_preference=ReadPreference.SECONDARY_PREFERRED,
+            readConcernLevel="local"
         )
         
         await mongo_client.admin.command('ping')
         db = mongo_client["AutoQA"]
         collection = db[MAIN_COLLECTION_NAME]
-        materialized_view = db[VIEW_COLLECTION_NAME]
         
-        main_count = await collection.count_documents({})
-        logger.info("Connected to MongoDB Atlas")
-        logger.info(f"Main: {MAIN_COLLECTION_NAME} ({main_count:,} docs)")
-        logger.info(f"View: {VIEW_COLLECTION_NAME}")
+        estimated_count = await collection.estimated_document_count()
         
-        # Create indexes on materialized view
+        logger.info("✅ CONNECTED TO MONGODB - OPTIMIZED FOR MILLIONS OF RECORDS")
+        logger.info(f"📊 Collection: {MAIN_COLLECTION_NAME}")
+        logger.info(f"📈 Estimated documents: {estimated_count:,}")
+        logger.info(f"🔄 Streaming enabled: YES (batch_size={STREAM_BATCH_SIZE})")
+        logger.info(f"📖 Read preference: SECONDARY_PREFERRED")
+        logger.info(f"🔒 Database mode: 100% READ ONLY")
+        
+        # Check existing indexes (informational only - no creation)
         try:
-            existing_indexes = await materialized_view.index_information()
-            logger.info(f"Existing view indexes: {len(existing_indexes)}")
-            
-            view_indexes = [
-                [("date", 1), ("client_id", 1), ("status", 1)],
-                [("date", 1), ("status", 1)],
-                [("client_id", 1)]
-            ]
-            
-            for index_fields in view_indexes:
-                index_name = "_".join([f"{f}_{d}" for f, d in index_fields])
-                if index_name not in existing_indexes:
-                    await materialized_view.create_index(index_fields, background=True)
-                    logger.info(f"Created view index: {index_name}")
-            
-            logger.info("Materialized view indexed")
+            indexes = await collection.index_information()
+            logger.info(f"📋 Available indexes: {list(indexes.keys())}")
+            logger.info("✅ Using existing indexes - optimized for caching strategy")
         except Exception as e:
-            logger.warning(f"View indexing skipped: {e}")
-        
-        # PHASE 1: Create compound index on main collection
-        try:
-            main_indexes = await collection.index_information()
-            
-            if "client_id_1_created_at_-1_auto_qa_status_1" not in main_indexes:
-                await collection.create_index(
-                    [("client_id", 1), ("created_at", -1), ("auto_qa_status", 1)],
-                    background=True,
-                    name="client_id_1_created_at_-1_auto_qa_status_1"
-                )
-                logger.info("PHASE 1: Created compound index (client_id + created_at + auto_qa_status)")
-            
-            cutoff_date = datetime.now() - timedelta(days=180)
-            
-            if "created_at_-1_client_id_1_partial" not in main_indexes:
-                await collection.create_index(
-                    [("created_at", -1), ("client_id", 1)],
-                    partialFilterExpression={"created_at": {"$gte": cutoff_date}},
-                    background=True,
-                    name="created_at_-1_client_id_1_partial"
-                )
-                logger.info("Created partial index (created_at + client_id, last 180 days)")
-            
-            if "client_id_1_only" not in main_indexes:
-                await collection.create_index(
-                    [("client_id", 1)],
-                    background=True,
-                    name="client_id_1_only"
-                )
-                logger.info("Created single-field index (client_id)")
-            
-            logger.info("Main collection indexed with compound indexes")
-        except Exception as e:
-            logger.warning(f"Main collection indexing skipped: {e}")
-        
-        # Initial view refresh
-        logger.info("Performing initial view refresh...")
-        await refresh_materialized_view_full()
-        
-        # Schedule adaptive refresh
-        scheduler.add_job(
-            scheduled_refresh_with_adaptive_interval,
-            'interval',
-            minutes=10,
-            id='refresh_view',
-            replace_existing=True
-        )
-        
-        # Background client list refresh
-        scheduler.add_job(
-            refresh_client_list_background,
-            'interval',
-            seconds=1800,
-            id='refresh_clients',
-            replace_existing=True
-        )
-        
-        scheduler.start()
-        logger.info("Adaptive scheduler started (initial: 10 min)")
-        logger.info("Client list background refresh scheduled (30 min)")
+            logger.warning(f"Could not retrieve index info: {e}")
         
     except Exception as e:
-        logger.error(f"MongoDB failed: {e}")
+        logger.error(f"❌ MongoDB connection failed: {e}")
         traceback.print_exc()
         mongo_client = None
     
-    # Redis connection with LRU eviction policy
+    # Redis Connection (Primary performance optimization)
     try:
         redis_client = await aioredis.from_url(
             "redis://localhost:6379",
             encoding="utf-8",
             decode_responses=True,
-            max_connections=50
+            max_connections=100
         )
         await redis_client.ping()
         
         try:
             await redis_client.config_set('maxmemory-policy', 'allkeys-lru')
-            logger.info("Redis LRU eviction policy enabled")
         except:
-            logger.warning("Could not set Redis eviction policy (may need admin rights)")
+            pass
         
-        logger.info("Redis connected")
-        
-        # PHASE 1: Cache warming on startup
-        await warm_cache()
+        logger.info("✅ Redis connected - materialized views enabled")
+        logger.info("💾 Cache strategy: Redis materialized views (faster than any index)")
         
     except Exception as e:
-        logger.warning(f"Redis unavailable: {e}")
+        logger.warning(f"⚠️  Redis connection failed: {e}")
+        logger.warning("⚠️  Application will work but without caching (slower performance)")
         redis_client = None
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup connections"""
+    
+    # Build initial data caches (the real performance optimization!)
+    logger.info("📋 Building initial client list...")
+    await refresh_client_list_background()
+    
+    logger.info("📅 Building initial materialized views (30 days)...")
+    await refresh_materialized_views_full()
+    
+    # Start scheduler for automatic cache refresh
+    if redis_client is not None:
+        scheduler.add_job(
+            scheduled_refresh_with_adaptive_interval,
+            'interval',
+            minutes=15,
+            id='refresh_view'
+        )
+        
+        scheduler.add_job(
+            refresh_client_list_background,
+            'interval',
+            minutes=60,
+            id='refresh_clients'
+        )
+        
+        scheduler.start()
+        logger.info("⏰ Scheduler started: View refresh (15min), Clients (60min)")
+    else:
+        logger.warning("⚠️  Scheduler disabled - Redis unavailable")
+    
+    logger.info("=" * 80)
+    logger.info("✅ STARTUP COMPLETE - APPLICATION READY")
+    logger.info("🚀 Performance: Redis caching + MongoDB streaming + No index overhead")
+    logger.info("=" * 80)
+    
+    # Application runs here
+    yield
+    
+    # SHUTDOWN
+    logger.info("=" * 80)
+    logger.info("APPLICATION SHUTDOWN - CLEANING UP")
+    logger.info("=" * 80)
+    
     if scheduler.running:
         scheduler.shutdown()
+        logger.info("⏰ Scheduler stopped")
+    
     if redis_client is not None:
         await redis_client.close()
+        logger.info("💾 Redis connection closed")
+    
     if mongo_client is not None:
         mongo_client.close()
+        logger.info("🗄️  MongoDB connection closed")
+    
+    logger.info("✅ Application shutdown complete")
 
 # ============================================================================
-# API ENDPOINTS (ALL using collection.find() only)
+# FASTAPI APP
+# ============================================================================
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+# ============================================================================
+# API ENDPOINTS (Optimized for millions - NO MEMORY LISTS)
 # ============================================================================
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """Render dashboard"""
     return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/api/stats")
+async def get_stats():
+    """System statistics and health"""
+    return JSONResponse(content={
+        "cache": {
+            "hits": cache_metrics["hits"],
+            "misses": cache_metrics["misses"],
+            "hit_rate": f"{cache_metrics.get('hit_rate', 0):.2f}%"
+        },
+        "memory": {
+            "peak_batch_size": memory_stats["peak_batch_size"],
+            "total_processed": memory_stats["total_processed"],
+            "streaming_queries": memory_stats["streaming_queries"]
+        },
+        "config": {
+            "stream_batch_size": STREAM_BATCH_SIZE,
+            "max_memory_batch": MAX_MEMORY_BATCH,
+            "parallel_date_limit": PARALLEL_DATE_LIMIT,
+            "database_writes": "DISABLED - READ ONLY MODE"
+        }
+    })
 
 @app.get("/api/cache-metrics")
 async def get_cache_metrics():
@@ -1066,354 +997,267 @@ async def get_cache_metrics():
 @require_db
 @rate_limit
 async def get_ticket_data(request: Request, date: str = None):
-    """Get tickets by date using only find()"""
+    """Get tickets by date - optimized for millions"""
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
     
     cache_key = f"ticket_data:{date}"
-    cached_data = await get_cache(cache_key, endpoint="ticket_data")
-    if cached_data:
-        return JSONResponse(content=cached_data)
+    cached = await get_cache(cache_key, "ticket_data")
+    if cached:
+        return JSONResponse(content=cached)
     
-    # STEP 1: FETCH using only find()
-    if materialized_view is not None:
-        raw_view_data = await fetch_view_raw(
-            match_conditions={"date": date},
-            projection={"client_id": 1, "status": 1, "count": 1, "_id": 0},
-            limit=10000,
-            sort=[("client_id", 1)]
-        )
-        
-        if raw_view_data:
-            # STEP 2: TRANSFORM in memory
-            client_stats = {}
-            
-            for entry in raw_view_data:
-                client_id = entry.get("client_id")
-                status = entry.get("status")
-                count = entry.get("count", 0)
-                
-                if client_id not in client_stats:
-                    client_stats[client_id] = init_stats_dict()
-                
-                if status in client_stats[client_id]:
-                    client_stats[client_id][status] += count
-            
-            sorted_clients = sorted(client_stats.keys())[:100]
-            
-            response_data = {
-                'client_ids': sorted_clients,
-                'completed': [client_stats[c]['completed'] for c in sorted_clients],
-                'processing': [client_stats[c]['processing'] for c in sorted_clients],
-                'failed': [client_stats[c]['failed'] for c in sorted_clients],
-                'callback': [client_stats[c]['callback'] for c in sorted_clients]
-            }
-            
-            await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
-            return JSONResponse(content=response_data)
+    client_stats = await get_materialized_view_from_redis(date)
     
-    # Fallback: use collection.find()
-    target_date = datetime.strptime(date, "%Y-%m-%d")
-    start, end = get_date_range(target_date, days=1)
+    if not client_stats:
+        client_stats = await build_materialized_view_for_date(date)
     
-    match_conditions = {"created_at": {"$gte": start, "$lte": end}}
-    projection = {
-        "client_id": 1,
-        "client": 1,
-        "auto_qa_status": 1,
-        "request_status": 1,
-        "qa": 1,
-        "request": 1,
-        "_id": 0
-    }
+    if not client_stats:
+        return JSONResponse(content={
+            'client_ids': [], 'completed': [], 'processing': [],
+            'failed': [], 'callback': []
+        })
     
-    raw_tickets = await fetch_tickets_raw(
-        match_conditions=match_conditions,
-        projection=projection,
-        limit=10000
-    )
+    sorted_clients = sorted(client_stats.keys())[:100]
     
-    # Normalize and transform in memory
-    normalized_tickets = normalize_ticket_list(raw_tickets)
-    client_counts = count_by_client_and_status(normalized_tickets)
-    
-    sorted_clients = sorted(client_counts.keys())[:100]
-    
-    response_data = {
+    response = {
         'client_ids': sorted_clients,
-        'completed': [client_counts[c]['completed'] for c in sorted_clients],
-        'processing': [client_counts[c]['processing'] for c in sorted_clients],
-        'failed': [client_counts[c]['failed'] for c in sorted_clients],
-        'callback': [client_counts[c]['callback'] for c in sorted_clients]
+        'completed': [client_stats[c]['completed'] for c in sorted_clients],
+        'processing': [client_stats[c]['processing'] for c in sorted_clients],
+        'failed': [client_stats[c]['failed'] for c in sorted_clients],
+        'callback': [client_stats[c]['callback'] for c in sorted_clients]
     }
     
-    await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
-    return JSONResponse(content=response_data)
+    await set_cache(cache_key, response, expire=VIEW_CACHE_TTL)
+    return JSONResponse(content=response)
 
 @app.get("/api/detailed-tickets")
 @require_db
 @rate_limit
 async def get_detailed_tickets(request: Request, date: str, status: str):
-    """Get detailed tickets using only collection.find()"""
-    target_date = datetime.strptime(date, "%Y-%m-%d")
-    start, end = get_date_range(target_date, days=1)
-    
-    # Fetch using only find()
-    match_conditions = {"created_at": {"$gte": start, "$lte": end}}
-    projection = {
-        "ticket_id": 1,
-        "client_id": 1,
-        "client": 1,
-        "created_at": 1,
-        "auto_qa_status": 1,
-        "request_status": 1,
-        "qa": 1,
-        "request": 1,
-        "_id": 1
-    }
-    
-    raw_tickets = await fetch_tickets_raw(
-        match_conditions=match_conditions,
-        projection=projection,
-        limit=5000
-    )
-    
-    # Normalize, filter, and sort in memory
-    normalized_tickets = normalize_ticket_list(raw_tickets)
-    filtered_tickets = filter_by_status(normalized_tickets, status)
-    sorted_tickets = sort_by_date(filtered_tickets, descending=True)
-    
-    # Format response
-    formatted_tickets = []
-    for t in sorted_tickets[:1000]:
-        formatted_tickets.append({
-            'ticket_id': t.get('ticket_id', 'N/A'),
-            'client_id': str(t.get('client_id', 'N/A')),
-            'status': status,
-            'created_at': t['created_at'].strftime('%Y-%m-%d %H:%M') if isinstance(t.get('created_at'), datetime) else 'N/A',
-            'auto_qa_status': t.get('auto_qa_status', 'N/A'),
-            'request_status': t.get('request_status', 'N/A')
-        })
-    
-    return JSONResponse(content={
-        'date': date,
-        'status': status,
-        'total_tickets': len(formatted_tickets),
-        'tickets': formatted_tickets
-    })
-
-@app.get("/api/all-clients")
-@require_db
-@rate_limit
-async def get_all_clients(
-    request: Request,
-    limit: int = CLIENT_LIST_DEFAULT_LIMIT,
-    offset: int = 0,
-    search: str = None
-):
-    """Get client IDs using only find()"""
-    
-    cache_key = f"all_clients:{limit}:{offset}:{search or 'all'}"
-    cached_data = await get_cache(cache_key, endpoint="all_clients")
-    if cached_data:
-        return JSONResponse(content=cached_data)
-    
+    """
+    Get detailed tickets - OPTIMIZED: No list building, uses MongoDB filtering
+    Stream results directly, stop at limit
+    """
     try:
-        # Fetch using only find()
-        if materialized_view is not None:
-            raw_view_data = await fetch_view_raw(
-                match_conditions={},
-                projection={"client_id": 1, "_id": 0},
-                limit=50000,
-                sort=None
-            )
-            all_clients = extract_unique_values(raw_view_data, "client_id")
-        else:
-            raw_tickets = await fetch_tickets_raw(
-                match_conditions={},
-                projection={"client_id": 1, "_id": 0},
-                limit=50000,
-                sort=None
-            )
-            all_clients = extract_unique_values(raw_tickets, "client_id")
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+        start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = target_date.replace(hour=23, minute=59, second=59, microsecond=999)
         
-        # Filter and paginate in memory
-        if search:
-            all_clients = search_in_list(all_clients, search)
-        
-        total_count = len(all_clients)
-        paginated_clients = paginate_data(all_clients, offset, limit)
-        
-        response_data = {
-            "client_ids": paginated_clients,
-            "total": total_count,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + len(paginated_clients)) < total_count
+        match_conditions = {
+            "created_at": {"$gte": start, "$lte": end}
         }
         
-        await set_cache(cache_key, response_data, expire=CLIENT_LIST_CACHE_TTL)
+        status_filter = build_status_match_conditions(status)
+        if status_filter:
+            match_conditions.update(status_filter)
         
-        return JSONResponse(content=response_data)
+        projection = {
+            "ticket_id": 1,
+            "client_id": 1,
+            "created_at": 1,
+            "auto_qa_status": 1,
+            "request_status": 1,
+            "_id": 1
+        }
         
-    except Exception as e:
-        logger.error(f"Client list query failed: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-@app.get("/api/clients/search")
-@require_db
-@rate_limit
-async def search_clients(request: Request, q: str, limit: int = 50):
-    """Fast client search using cached data"""
-    if not q or len(q) < 1:
-        return JSONResponse(content={"client_ids": []})
-    
-    cache_key = f"client_search:{q}:{limit}"
-    cached_data = await get_cache(cache_key, endpoint="client_search")
-    if cached_data:
-        return JSONResponse(content=cached_data)
-    
-    try:
-        all_clients_cache_key = "all_clients_raw_list"
-        all_clients = await get_cache(all_clients_cache_key, endpoint="all_clients_raw")
+        tickets = []
+        max_tickets = 1000
         
-        if all_clients is None:
-            if materialized_view is not None:
-                raw_view_data = await fetch_view_raw(
-                    match_conditions={},
-                    projection={"client_id": 1, "_id": 0},
-                    limit=50000,
-                    sort=None
-                )
-                all_clients = extract_unique_values(raw_view_data, "client_id")
-            else:
-                raw_tickets = await fetch_tickets_raw(
-                    match_conditions={},
-                    projection={"client_id": 1, "_id": 0},
-                    limit=50000,
-                    sort=None
-                )
-                all_clients = extract_unique_values(raw_tickets, "client_id")
+        async for ticket in stream_tickets_with_limit(
+            match_conditions, 
+            projection, 
+            max_results=max_tickets,
+            sort=[("created_at", -1)]
+        ):
+            normalized = normalize_ticket_document(ticket)
             
-            await set_cache(all_clients_cache_key, all_clients, expire=3600)
+            ticket_status = parse_ticket_status(normalized)
+            if ticket_status == status:
+                tickets.append({
+                    'ticket_id': normalized.get('ticket_id', 'N/A'),
+                    'client_id': str(normalized.get('client_id', 'N/A')),
+                    'status': status,
+                    'created_at': normalized['created_at'].strftime('%Y-%m-%d %H:%M') if isinstance(normalized.get('created_at'), datetime) else 'N/A',
+                    'auto_qa_status': normalized.get('auto_qa_status', 'N/A'),
+                    'request_status': normalized.get('request_status', 'N/A')
+                })
+            
+            if len(tickets) >= max_tickets:
+                break
         
-        # Search in memory
-        matching_clients = search_in_list(all_clients, q)[:limit]
+        logger.info(f"Returned {len(tickets)} detailed tickets for {date}/{status}")
         
-        response_data = {"client_ids": matching_clients}
-        await set_cache(cache_key, response_data, expire=600)
-        
-        return JSONResponse(content=response_data)
+        return JSONResponse(content={
+            'date': date,
+            'status': status,
+            'total_tickets': len(tickets),
+            'tickets': tickets
+        })
         
     except Exception as e:
-        logger.error(f"Client search failed: {e}")
-        return JSONResponse(content={"client_ids": []})
+        logger.error(f"Detailed tickets error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/api/client-tickets-7days")
 @require_db
 @rate_limit
 async def get_client_tickets_7days(request: Request, client_id: str):
-    """Get client 7-day data using only collection.find()"""
+    """Get client 7-day data using streaming"""
     if not client_id:
-        return JSONResponse(status_code=400, content={"success": False, "error": "Client ID required"})
+        return JSONResponse(status_code=400, content={"error": "Client ID required"})
     
     cache_key = f"client_7days:{client_id}"
-    cached_data = await get_cache(cache_key, endpoint="client_7days")
-    if cached_data:
-        return JSONResponse(content=cached_data)
+    cached = await get_cache(cache_key, "client_7days")
+    if cached:
+        return JSONResponse(content=cached)
     
     end_date = datetime.now()
-    start_date, end_date = get_date_range(end_date, days=7)
+    start_date = end_date - timedelta(days=6)
+    start = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = end_date.replace(hour=23, minute=59, second=59, microsecond=999)
     
-    # Fetch using only collection.find()
     match_conditions = {
         'client_id': str(client_id),
-        'created_at': {'$gte': start_date, '$lte': end_date}
-    }
-    projection = {
-        'created_at': 1,
-        'auto_qa_status': 1,
-        'request_status': 1,
-        'qa': 1,
-        'request': 1,
-        '_id': 0
+        'created_at': {'$gte': start, '$lte': end}
     }
     
-    raw_tickets = await fetch_tickets_raw(
-        match_conditions=match_conditions,
-        projection=projection,
-        limit=10000
-    )
+    daily_counts = await streaming_aggregate_by_date_status(match_conditions, start_date, 7)
     
-    if not raw_tickets:
-        return JSONResponse(content={
-            'success': True,
-            'total_tickets': 0,
-            'all_time_stats': init_stats_dict(),
-            'seven_day_data': {
-                'dates': format_date_labels(end_date, 7),
-                'completed': [0] * 7,
-                'processing': [0] * 7,
-                'failed': [0] * 7,
-                'callback': [0] * 7
-            }
-        })
-    
-    # Normalize and count in memory
-    normalized_tickets = normalize_ticket_list(raw_tickets)
-    total_counts = count_by_status(normalized_tickets)
-    daily_counts = count_by_date_and_status(normalized_tickets, end_date - timedelta(days=6), 7)
-    
-    # Format response
     sorted_dates = sorted(daily_counts.keys())
-    seven_day_breakdown = {
-        'dates': [datetime.strptime(d, '%Y-%m-%d').strftime('%b %d, %Y') for d in sorted_dates],
-        'completed': [daily_counts[d]['completed'] for d in sorted_dates],
-        'processing': [daily_counts[d]['processing'] for d in sorted_dates],
-        'failed': [daily_counts[d]['failed'] for d in sorted_dates],
-        'callback': [daily_counts[d]['callback'] for d in sorted_dates]
-    }
-    
-    response_data = {
+    response = {
         'success': True,
-        'total_tickets': len(normalized_tickets),
-        'all_time_stats': total_counts,
-        'seven_day_data': seven_day_breakdown
+        'seven_day_data': {
+            'dates': [datetime.strptime(d, '%Y-%m-%d').strftime('%b %d, %Y') for d in sorted_dates],
+            'completed': [daily_counts[d]['completed'] for d in sorted_dates],
+            'processing': [daily_counts[d]['processing'] for d in sorted_dates],
+            'failed': [daily_counts[d]['failed'] for d in sorted_dates],
+            'callback': [daily_counts[d]['callback'] for d in sorted_dates]
+        }
     }
     
-    await set_cache(cache_key, response_data, expire=DEFAULT_CACHE_TTL)
-    return JSONResponse(content=response_data)
+    await set_cache(cache_key, response, expire=DEFAULT_CACHE_TTL)
+    return JSONResponse(content=response)
+
+@app.get("/api/all-clients")
+@require_db
+@rate_limit
+async def get_all_clients(request: Request, limit: int = 1000, offset: int = 0, search: str = None):
+    """
+    Get client list with pagination - millions safe
+    WITH FALLBACK to database if cache is empty
+    """
+    cache_key = f"all_clients:{limit}:{offset}:{search or 'all'}"
+    cached = await get_cache(cache_key, "all_clients")
+    if cached:
+        logger.info(f"✅ Returning cached client list: {cached.get('total', 0)} total")
+        return JSONResponse(content=cached)
+    
+    # Get from cache
+    all_clients = await get_cache("all_clients_raw_list", "all_clients_raw")
+    
+    # ✅ FALLBACK: If cache is empty, get from database directly
+    if not all_clients:
+        logger.warning("❌ Client cache empty - using database fallback")
+        all_clients = await get_distinct_clients_from_db(limit=10000)
+        
+        if not all_clients:
+            # Still empty - trigger background refresh and return empty
+            logger.error("❌ No clients found in database - triggering refresh")
+            asyncio.create_task(refresh_client_list_background())
+            return JSONResponse(content={
+                "client_ids": [], 
+                "total": 0, 
+                "message": "Building client list... Please refresh in a moment."
+            })
+        
+        # Cache the fallback result
+        await set_cache("all_clients_raw_list", all_clients, expire=CLIENT_LIST_CACHE_TTL)
+        logger.info(f"✅ Cached fallback client list: {len(all_clients)} clients")
+    
+    # Search filter
+    if search:
+        query_lower = search.lower()
+        all_clients = [c for c in all_clients if query_lower in c.lower()]
+    
+    total = len(all_clients)
+    paginated = all_clients[offset:offset + limit]
+    
+    response = {
+        "client_ids": paginated,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": (offset + len(paginated)) < total
+    }
+    
+    await set_cache(cache_key, response, expire=CLIENT_LIST_CACHE_TTL)
+    logger.info(f"✅ Returning {len(paginated)} clients (total: {total})")
+    return JSONResponse(content=response)
+
+@app.get("/api/clients/search")
+@require_db
+@rate_limit
+async def search_clients(request: Request, q: str, limit: int = 50):
+    """
+    Fast client search using cached data
+    WITH FALLBACK to database if cache is empty
+    """
+    if not q or len(q) < 1:
+        return JSONResponse(content={"client_ids": []})
+    
+    cache_key = f"client_search:{q}:{limit}"
+    cached = await get_cache(cache_key, "client_search")
+    if cached:
+        return JSONResponse(content=cached)
+    
+    try:
+        # Get from cache
+        all_clients = await get_cache("all_clients_raw_list", "all_clients_raw")
+        
+        # ✅ FALLBACK: If cache is empty, get from database
+        if not all_clients:
+            logger.warning("Client cache empty for search - using database fallback")
+            all_clients = await get_distinct_clients_from_db(limit=10000)
+            
+            if not all_clients:
+                asyncio.create_task(refresh_client_list_background())
+                return JSONResponse(content={"client_ids": []})
+            
+            # Cache for next time
+            await set_cache("all_clients_raw_list", all_clients, expire=CLIENT_LIST_CACHE_TTL)
+        
+        # Search in memory
+        query_lower = q.lower()
+        matching = [c for c in all_clients if query_lower in c.lower()][:limit]
+        
+        response = {"client_ids": matching}
+        await set_cache(cache_key, response, expire=600)
+        
+        return JSONResponse(content=response)
+        
+    except Exception as e:
+        logger.error(f"Client search error: {e}")
+        traceback.print_exc()
+        return JSONResponse(content={"client_ids": []})
 
 @app.get("/api/ticket-data-range")
 @require_db
 @rate_limit
 async def get_ticket_data_range(request: Request, start_date: str, end_date: str, client_ids: str = None):
-    """Get ticket data for date range using only find()"""
-    start = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
-    end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999)
-    
-    cache_key = f"range:{start_date}:{end_date}:{client_ids or 'all'}"
-    cached_data = await get_cache(cache_key, endpoint="ticket_data_range")
-    if cached_data:
-        return JSONResponse(content=cached_data)
-    
-    # Fetch using only find()
-    if materialized_view is not None:
-        match_conditions = {"date": {"$gte": start_date, "$lte": end_date}}
+    """
+    Get ticket data for date range using streaming for millions
+    Supports optional client filtering - NO GIANT LISTS
+    """
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999)
         
-        if client_ids:
-            client_list = [c.strip() for c in client_ids.split(",")]
-            match_conditions["client_id"] = {"$in": client_list}
+        cache_key = f"range:{start_date}:{end_date}:{client_ids or 'all'}"
+        cached = await get_cache(cache_key, "ticket_data_range")
+        if cached:
+            return JSONResponse(content=cached)
         
-        projection = {"date": 1, "client_id": 1, "status": 1, "count": 1, "_id": 0}
-        
-        raw_view_data = await fetch_view_raw(
-            match_conditions=match_conditions,
-            projection=projection,
-            limit=100000,
-            sort=None
-        )
-    else:
         match_conditions = {"created_at": {"$gte": start, "$lte": end}}
         
         if client_ids:
@@ -1423,116 +1267,99 @@ async def get_ticket_data_range(request: Request, start_date: str, end_date: str
         projection = {
             "created_at": 1,
             "client_id": 1,
-            "client": 1,
             "auto_qa_status": 1,
             "request_status": 1,
-            "qa": 1,
-            "request": 1,
             "_id": 0
         }
         
-        raw_tickets = await fetch_tickets_raw(
-            match_conditions=match_conditions,
-            projection=projection,
-            limit=100000
-        )
+        total_stats = init_stats_dict()
+        daily_data = {}
+        client_breakdown = {}
+        total_processed = 0
         
-        # Normalize and convert to view format
-        normalized_tickets = normalize_ticket_list(raw_tickets)
+        async for batch in stream_tickets(match_conditions, projection, batch_size=2000):
+            for ticket in batch:
+                normalized = normalize_ticket_document(ticket)
+                date_str = extract_date(normalized).strftime('%Y-%m-%d')
+                client_id = str(normalized.get('client_id', 'unknown'))
+                status = parse_ticket_status(normalized)
+                
+                if status in total_stats:
+                    total_stats[status] += 1
+                
+                if date_str not in daily_data:
+                    daily_data[date_str] = init_stats_dict()
+                if status in daily_data[date_str]:
+                    daily_data[date_str][status] += 1
+                
+                if client_id not in client_breakdown:
+                    client_breakdown[client_id] = {**init_stats_dict(), "total": 0}
+                if status in client_breakdown[client_id]:
+                    client_breakdown[client_id][status] += 1
+                    client_breakdown[client_id]["total"] += 1
+            
+            total_processed += len(batch)
+            
+            if total_processed % 50000 == 0:
+                logger.info(f"Range query: processed {total_processed:,} tickets")
         
-        raw_view_data = []
-        for ticket in normalized_tickets:
-            raw_view_data.append({
-                'date': extract_date(ticket).strftime('%Y-%m-%d'),
-                'client_id': str(ticket.get('client_id', '')),
-                'status': parse_ticket_status(ticket),
-                'count': 1
-            })
-    
-    # Transform all in memory
-    total_stats = init_stats_dict()
-    daily_data = {}
-    client_breakdown = {}
-    
-    for entry in raw_view_data:
-        date = entry.get('date')
-        client_id = entry.get('client_id')
-        status = entry.get('status')
-        count = entry.get('count', 1)
+        dates = sorted(daily_data.keys())
+        daily_breakdown = {
+            "dates": [datetime.strptime(d, "%Y-%m-%d").strftime("%b %d") for d in dates] if dates else [],
+            "completed": [daily_data[d]["completed"] for d in dates] if dates else [],
+            "processing": [daily_data[d]["processing"] for d in dates] if dates else [],
+            "failed": [daily_data[d]["failed"] for d in dates] if dates else [],
+            "callback": [daily_data[d]["callback"] for d in dates] if dates else []
+        }
         
-        if status in total_stats:
-            total_stats[status] += count
+        response = {
+            "success": True,
+            "total_days": (end - start).days + 1,
+            "total_tickets": total_processed,
+            "total_stats": total_stats,
+            "daily_breakdown": daily_breakdown,
+            "client_breakdown": client_breakdown
+        }
         
-        if date not in daily_data:
-            daily_data[date] = init_stats_dict()
-        if status in daily_data[date]:
-            daily_data[date][status] += count
+        await set_cache(cache_key, response, expire=VIEW_CACHE_TTL)
+        return JSONResponse(content=response)
         
-        if client_id not in client_breakdown:
-            client_breakdown[client_id] = {**init_stats_dict(), "total": 0}
-        if status in client_breakdown[client_id]:
-            client_breakdown[client_id][status] += count
-            client_breakdown[client_id]["total"] += count
-    
-    # Format response
-    dates = sorted(daily_data.keys())
-    daily_breakdown = {
-        "dates": [datetime.strptime(d, "%Y-%m-%d").strftime("%b %d") for d in dates] if dates else [],
-        "completed": [daily_data[d]["completed"] for d in dates] if dates else [],
-        "processing": [daily_data[d]["processing"] for d in dates] if dates else [],
-        "failed": [daily_data[d]["failed"] for d in dates] if dates else [],
-        "callback": [daily_data[d]["callback"] for d in dates] if dates else []
-    }
-    
-    response_data = {
-        "success": True,
-        "total_days": (end - start).days + 1,
-        "total_stats": total_stats,
-        "daily_breakdown": daily_breakdown,
-        "client_breakdown": client_breakdown
-    }
-    
-    await set_cache(cache_key, response_data, expire=VIEW_CACHE_TTL)
-    return JSONResponse(content=response_data)
+    except Exception as e:
+        logger.error(f"Range query error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/api/refresh-view")
-async def manual_refresh_view():
-    """Manually trigger materialized view refresh"""
+async def manual_refresh():
+    """Manually trigger incremental view refresh"""
     try:
-        await refresh_materialized_view()
-        return JSONResponse(content={"status": "success", "message": "View refreshed"})
+        asyncio.create_task(refresh_materialized_view())
+        return JSONResponse(content={"status": "started", "message": "Incremental refresh started in background (7 days)"})
     except Exception as e:
-        logger.error(f"Manual refresh failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/api/refresh-view-full")
 async def manual_refresh_view_full():
     """Manually trigger FULL materialized view refresh"""
     try:
-        duration = await refresh_materialized_view_full()
+        asyncio.create_task(refresh_materialized_views_full())
         return JSONResponse(content={
-            "status": "success",
-            "message": f"Full view refresh completed in {duration:.1f}s"
+            "status": "started",
+            "message": "Full refresh started in background (30 days)"
         })
     except Exception as e:
-        logger.error(f"Full refresh failed: {e}")
+        logger.error(f"Full refresh error: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/reload-data")
 @require_db
 async def reload_data():
-    """Reload data - clear cache and refresh view"""
+    """Reload - clear cache and refresh"""
     await clear_cache_pattern("*")
-    await refresh_materialized_view()
-    
-    main_count = await collection.count_documents({})
-    view_count = await materialized_view.count_documents({}) if materialized_view is not None else 0
-    
-    return JSONResponse(content={
-        "status": "success",
-        "message": f"Reloaded. Main: {main_count:,} docs. View: {view_count:,} entries."
-    })
+    asyncio.create_task(refresh_materialized_view())
+    asyncio.create_task(refresh_client_list_background())
+    return JSONResponse(content={"status": "success", "message": "Cache cleared and refresh initiated"})
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="info", workers=4, reload=False)
