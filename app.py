@@ -831,18 +831,18 @@ async def lifespan(app: FastAPI):
         
         estimated_count = await collection.estimated_document_count()
         
-        logger.info("✅ CONNECTED TO MONGODB - OPTIMIZED FOR MILLIONS OF RECORDS")
-        logger.info(f"📊 Collection: {MAIN_COLLECTION_NAME}")
-        logger.info(f"📈 Estimated documents: {estimated_count:,}")
-        logger.info(f"🔄 Streaming enabled: YES (batch_size={STREAM_BATCH_SIZE})")
-        logger.info(f"📖 Read preference: SECONDARY_PREFERRED")
-        logger.info(f"🔒 Database mode: 100% READ ONLY")
+        logger.info("CONNECTED TO MONGODB - OPTIMIZED FOR MILLIONS OF RECORDS")
+        logger.info(f"Collection: {MAIN_COLLECTION_NAME}")
+        logger.info(f"Estimated documents: {estimated_count:,}")
+        logger.info(f"Streaming enabled: YES (batch_size={STREAM_BATCH_SIZE})")
+        logger.info(f"Read preference: SECONDARY_PREFERRED")
+        logger.info(f"Database mode: 100% READ ONLY")
         
         # Check existing indexes (informational only - no creation)
         try:
             indexes = await collection.index_information()
-            logger.info(f"📋 Available indexes: {list(indexes.keys())}")
-            logger.info("✅ Using existing indexes - optimized for caching strategy")
+            logger.info(f"Available indexes: {list(indexes.keys())}")
+            logger.info("Using existing indexes - optimized for caching strategy")
         except Exception as e:
             logger.warning(f"Could not retrieve index info: {e}")
         
@@ -866,8 +866,8 @@ async def lifespan(app: FastAPI):
         except:
             pass
         
-        logger.info("✅ Redis connected - materialized views enabled")
-        logger.info("💾 Cache strategy: Redis materialized views (faster than any index)")
+        logger.info("Redis connected - materialized views enabled")
+        logger.info("Cache strategy: Redis materialized views (faster than any index)")
         
     except Exception as e:
         logger.warning(f"⚠️  Redis connection failed: {e}")
@@ -875,10 +875,10 @@ async def lifespan(app: FastAPI):
         redis_client = None
     
     # Build initial data caches (the real performance optimization!)
-    logger.info("📋 Building initial client list...")
+    logger.info("Building initial client list...")
     await refresh_client_list_background()
     
-    logger.info("📅 Building initial materialized views (30 days)...")
+    logger.info("Building initial materialized views (30 days)...")
     await refresh_materialized_views_full()
     
     # Start scheduler for automatic cache refresh
@@ -898,7 +898,7 @@ async def lifespan(app: FastAPI):
         )
         
         scheduler.start()
-        logger.info("⏰ Scheduler started: View refresh (15min), Clients (60min)")
+        logger.info("Scheduler started: View refresh (15min), Clients (60min)")
     else:
         logger.warning("⚠️  Scheduler disabled - Redis unavailable")
     
