@@ -1360,6 +1360,335 @@ async def reload_data():
     asyncio.create_task(refresh_client_list_background())
     return JSONResponse(content={"status": "success", "message": "Cache cleared and refresh initiated"})
 
+
+# ============================================================================
+# DASHBOARD API ENDPOINTS
+# ============================================================================
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """Serve the main dashboard HTML page"""
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/api/overview")
+@require_db
+@rate_limit
+async def get_overview(request: Request, date: str):
+    """Get overview statistics for a specific date"""
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+        start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = target_date.replace(hour=23, minute=59, second=59, microsecond=999)
+
+        cache_key = f"overview:{date}"
+        cached = await get_cache(cache_key, "overview")
+        if cached:
+            return JSONResponse(content=cached)
+
+        # Try materialized view first
+        view_data = await get_materialized_view_from_redis(date)
+
+        if not view_data:
+            match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+            view_data = await streaming_aggregate_by_client_status(match_conditions)
+
+        # Aggregate stats
+        stats = {"completed": 0, "processing": 0, "failed": 0, "callback": 0}
+        charts = {"completed": {}, "processing": {}, "failed": {}, "callback": {}}
+
+        for client_id, client_stats in view_data.items():
+            for status in ["completed", "processing", "failed", "callback"]:
+                count = client_stats.get(status, 0)
+                stats[status] += count
+                if count > 0:
+                    charts[status][client_id] = count
+
+        response = {"date": date, "stats": stats, "charts": charts}
+        await set_cache(cache_key, response, expire=DEFAULT_CACHE_TTL)
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"Overview error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/clients")
+@require_db
+@rate_limit
+async def get_clients(request: Request):
+    """Get list of all unique client IDs"""
+    try:
+        cache_key = "all_clients_raw_list"
+        cached_clients = await get_cache(cache_key, "clients")
+
+        if cached_clients:
+            return JSONResponse(content={"client_ids": cached_clients})
+
+        logger.warning("Client cache miss - fetching from database")
+        clients = await get_distinct_clients_from_db(limit=10000)
+        await set_cache(cache_key, clients, expire=CLIENT_LIST_CACHE_TTL)
+        asyncio.create_task(refresh_client_list_background())
+
+        return JSONResponse(content={"client_ids": clients})
+
+    except Exception as e:
+        logger.error(f"Clients endpoint error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/client/{client_id}")
+@require_db
+@rate_limit
+async def get_client_data(request: Request, client_id: str):
+    """Get detailed data for a specific client (past 7 days)"""
+    try:
+        cache_key = f"client:{client_id}:7days"
+        cached = await get_cache(cache_key, "client_detail")
+        if cached:
+            return JSONResponse(content=cached)
+
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+
+        match_conditions = {
+            "client_id": client_id,
+            "created_at": {"$gte": start_date, "$lte": end_date}
+        }
+
+        daily_data = await streaming_aggregate_by_date_status(match_conditions, start_date, 7)
+
+        stats = {"completed": 0, "processing": 0, "failed": 0, "callback": 0}
+        daily_charts = {"completed": {}, "processing": {}, "failed": {}, "callback": {}}
+
+        for date_str, date_stats in daily_data.items():
+            for status in ["completed", "processing", "failed", "callback"]:
+                count = date_stats.get(status, 0)
+                stats[status] += count
+                daily_charts[status][date_str] = count
+
+        total_tickets = sum(stats.values())
+
+        response = {
+            "client_id": client_id,
+            "total_tickets": total_tickets,
+            "stats": stats,
+            "daily": daily_charts
+        }
+
+        await set_cache(cache_key, response, expire=DEFAULT_CACHE_TTL)
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"Client detail error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/tickets")
+@require_db
+@rate_limit
+async def get_tickets(request: Request, date: str, status: str):
+    """Get list of tickets for a specific date and status"""
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+        start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = target_date.replace(hour=23, minute=59, second=59, microsecond=999)
+
+        cache_key = f"tickets:{date}:{status}"
+        cached = await get_cache(cache_key, "tickets_list")
+        if cached:
+            return JSONResponse(content=cached)
+
+        match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+        status_conditions = build_status_match_conditions(status)
+        if status_conditions:
+            match_conditions.update(status_conditions)
+
+        projection = {
+            "ticket_id": 1,
+            "client_id": 1,
+            "created_at": 1,
+            "auto_qa_status": 1,
+            "request_status": 1,
+            "_id": 0
+        }
+
+        tickets_list = []
+        async for ticket in stream_tickets_with_limit(
+            match_conditions, projection, max_results=1000, sort=[("created_at", -1)]
+        ):
+            normalized = normalize_ticket_document(ticket)
+            tickets_list.append({
+                "ticket_id": normalized["ticket_id"],
+                "client_id": normalized["client_id"],
+                "created_at": normalized["created_at"].isoformat(),
+                "auto_qa_status": normalized["auto_qa_status"],
+                "request_status": normalized["request_status"]
+            })
+
+        response = {"date": date, "status": status, "tickets": tickets_list, "count": len(tickets_list)}
+        await set_cache(cache_key, response, expire=DEFAULT_CACHE_TTL)
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"Tickets list error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# ============================================================================
+# TOKEN ANALYTICS
+# ============================================================================
+
+TOKEN_PRICING = {
+    "gemini-2.5-flash": {"input": 0.075, "output": 0.30, "thoughts": 0.075},
+    "gemini-2.0-flash": {"input": 0.075, "output": 0.30, "thoughts": 0.075},
+    "gemini-1.5-pro": {"input": 1.25, "output": 5.00, "thoughts": 1.25},
+    "gemini-1.5-flash": {"input": 0.075, "output": 0.30, "thoughts": 0.075},
+    "gpt-4o-mini": {"input": 0.150, "output": 0.600},
+    "gpt-4o-mini-2024-07-18": {"input": 0.150, "output": 0.600},
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
+    "gpt-4": {"input": 30.00, "output": 60.00},
+    "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    "default": {"input": 0.10, "output": 0.30, "thoughts": 0.10}
+}
+
+def calculate_token_cost(model: str, input_tokens: int, output_tokens: int, thoughts_tokens: int = 0) -> dict:
+    """Calculate token costs based on model pricing"""
+    pricing = TOKEN_PRICING.get(model, TOKEN_PRICING["default"])
+    input_cost = (input_tokens / 1_000_000) * pricing.get("input", 0.10)
+    output_cost = (output_tokens / 1_000_000) * pricing.get("output", 0.30)
+    thoughts_cost = (thoughts_tokens / 1_000_000) * pricing.get("thoughts", 0.10) if thoughts_tokens > 0 else 0
+    total_cost = input_cost + output_cost + thoughts_cost
+    return {
+        "input_cost": round(input_cost, 6),
+        "output_cost": round(output_cost, 6),
+        "thoughts_cost": round(thoughts_cost, 6),
+        "total_cost": round(total_cost, 6)
+    }
+
+def parse_usage_entry(usage_entry: dict, llm_vendor: str = None) -> dict:
+    """Unified parser for token usage - handles Gemini and OpenAI formats"""
+    if not isinstance(usage_entry, dict):
+        return None
+
+    vendor = (llm_vendor or "openai").lower()
+    model = usage_entry.get("model", "unknown")
+    prompt_tokens = output_tokens = thoughts_tokens = total_tokens = 0
+
+    if vendor == "gemini" or "promptTokenCount" in usage_entry:
+        prompt_tokens = usage_entry.get("promptTokenCount", 0)
+        output_tokens = usage_entry.get("candidatesTokenCount", 0)
+        thoughts_tokens = usage_entry.get("thoughtsTokenCount", 0)
+        total_tokens = usage_entry.get("totalTokenCount", prompt_tokens + output_tokens + thoughts_tokens)
+    else:
+        prompt_tokens = usage_entry.get("prompt_tokens", usage_entry.get("input_tokens", 0))
+        output_tokens = usage_entry.get("completion_tokens", usage_entry.get("output_tokens", 0))
+        total_tokens = usage_entry.get("total_tokens", prompt_tokens + output_tokens)
+
+    costs = calculate_token_cost(model, prompt_tokens, output_tokens, thoughts_tokens)
+
+    return {
+        "model": model,
+        "prompt_tokens": prompt_tokens,
+        "output_tokens": output_tokens,
+        "thoughts_tokens": thoughts_tokens,
+        "total_tokens": total_tokens,
+        **costs
+    }
+
+@app.get("/api/token-analytics")
+@require_db
+@rate_limit
+async def get_token_analytics(request: Request, start_date: str, end_date: str, client_id: Optional[str] = None):
+    """Get token usage analytics for a date range and optional client"""
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999)
+
+        cache_key = f"token_analytics:{start_date}:{end_date}:{client_id or 'all'}"
+        cached = await get_cache(cache_key, "token_analytics")
+        if cached:
+            logger.info("Token analytics cache HIT")
+            return JSONResponse(content=cached)
+
+        match_conditions = {"created_at": {"$gte": start, "$lte": end}}
+        if client_id and client_id != "all":
+            match_conditions["client_id"] = client_id
+        match_conditions["usage"] = {"$exists": True, "$ne": None, "$ne": []}
+
+        projection = {"usage": 1, "llm_vendor": 1, "ticket_id": 1, "client_id": 1, "_id": 0}
+
+        model_stats = {}
+        total_tickets = total_processed = 0
+
+        logger.info(f"Fetching token analytics for {start_date} to {end_date}, client: {client_id or 'all'}")
+
+        async for batch in stream_tickets(match_conditions, projection, batch_size=1000):
+            for ticket in batch:
+                usage_list = ticket.get("usage", [])
+                llm_vendor = ticket.get("llm_vendor", "openai")
+
+                if not usage_list or not isinstance(usage_list, list):
+                    continue
+
+                total_tickets += 1
+
+                for usage_entry in usage_list:
+                    parsed = parse_usage_entry(usage_entry, llm_vendor)
+                    if not parsed:
+                        continue
+
+                    model = parsed["model"]
+                    if model not in model_stats:
+                        model_stats[model] = {
+                            "model": model, "total_tokens": 0, "prompt_tokens": 0,
+                            "output_tokens": 0, "thoughts_tokens": 0, "total_cost": 0.0,
+                            "input_cost": 0.0, "output_cost": 0.0, "thoughts_cost": 0.0, "request_count": 0
+                        }
+
+                    stats = model_stats[model]
+                    for key in ["total_tokens", "prompt_tokens", "output_tokens", "thoughts_tokens", 
+                               "total_cost", "input_cost", "output_cost", "thoughts_cost"]:
+                        stats[key] += parsed[key]
+                    stats["request_count"] += 1
+                    total_processed += 1
+
+            if total_processed % 10000 == 0 and total_processed > 0:
+                logger.info(f"Processed {total_processed:,} usage entries...")
+
+        for model in model_stats.values():
+            for key in ["total_cost", "input_cost", "output_cost", "thoughts_cost"]:
+                model[key] = round(model[key], 6)
+
+        models_list = sorted(model_stats.values(), key=lambda x: x["total_tokens"], reverse=True)
+
+        totals = {
+            "total_tokens": sum(m["total_tokens"] for m in models_list),
+            "prompt_tokens": sum(m["prompt_tokens"] for m in models_list),
+            "output_tokens": sum(m["output_tokens"] for m in models_list),
+            "thoughts_tokens": sum(m["thoughts_tokens"] for m in models_list),
+            "total_cost": round(sum(m["total_cost"] for m in models_list), 6),
+            "input_cost": round(sum(m["input_cost"] for m in models_list), 6),
+            "output_cost": round(sum(m["output_cost"] for m in models_list), 6),
+            "thoughts_cost": round(sum(m["thoughts_cost"] for m in models_list), 6),
+            "request_count": sum(m["request_count"] for m in models_list)
+        }
+
+        response = {
+            "success": True, "start_date": start_date, "end_date": end_date,
+            "client_id": client_id or "all", "total_tickets": total_tickets,
+            "models": models_list, "totals": totals
+        }
+
+        await set_cache(cache_key, response, expire=1800)
+        logger.info(f"Token analytics: {total_tickets} tickets, {len(models_list)} models, {total_processed} entries")
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"Token analytics error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e), "success": False})
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="info", workers=4, reload=False)

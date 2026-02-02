@@ -3,31 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoQA Dashboard</title>
+    <title>Auto QA Analytics Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="bg-pattern"></div>
-    
+
     <div class="dashboard-container">
         <!-- Header -->
-        <header class="dashboard-header">
+        <div class="dashboard-header">
             <div class="header-content">
-                <div class="header-icon">🎯</div>
+                <div class="header-icon">📊</div>
                 <div class="header-text">
-                    <h1>AutoQA Dashboard</h1>
-                    <p>Real-time ticket monitoring and analytics</p>
+                    <h1>Auto QA Analytics Dashboard</h1>
+                    <p>Real-time ticket monitoring and analysis</p>
                 </div>
             </div>
-        </header>
+        </div>
 
         <!-- Tab Navigation -->
         <div class="tab-navigation">
-            <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview Dashboard</button>
+            <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
             <button class="tab-btn" onclick="switchTab('client')">👤 Client Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('range')">📅 Date Range Analysis</button>
+            <button class="tab-btn" onclick="switchTab('date-range')">📅 Date Range Analysis</button>
+            <button class="tab-btn" onclick="switchTab('token-analytics')">🎯 Token Analytics</button>
         </div>
 
         <!-- Overview Tab -->
@@ -37,50 +37,56 @@
                 <div class="control-strip">
                     <div class="control-group">
                         <label class="control-label">Select Date</label>
-                        <input type="date" id="date-picker" class="date-input" onchange="loadData()">
+                        <input type="date" id="overview-date" class="date-input">
                     </div>
-                    
+
                     <div class="refresh-toggle">
                         <label>
-                            <input type="checkbox" id="auto-refresh-toggle" class="checkbox-custom" onchange="toggleAutoRefresh()">
-                            Auto Refresh
+                            <input type="checkbox" id="auto-refresh-toggle" class="checkbox-custom">
+                            <span>Auto Refresh</span>
                         </label>
-                        <span class="control-label">Every</span>
-                        <input type="number" id="refresh-interval" min="5" max="300" value="30" class="refresh-input" disabled onchange="updateRefreshInterval()">
-                        <span class="control-label">sec</span>
+                        <span style="color: #6b7280; font-weight: 600;">Every</span>
+                        <input type="number" id="refresh-interval" class="refresh-input" value="30" min="5" max="300" disabled>
+                        <span style="color: #6b7280; font-weight: 600;">sec</span>
                     </div>
-                    
-                    <button class="btn btn-primary" onclick="loadData()">
-                        <span id="load-btn-text">Reload</span>
-                        <div class="loading" id="load-spinner" style="display: none;"></div>
+
+                    <button class="btn btn-secondary" onclick="manualReload()">
+                        <span>🔄</span>
+                        Reload
                     </button>
                 </div>
             </div>
 
+            <!-- Date Banner -->
+            <div class="date-banner" id="overview-date-banner">
+                <div class="date-banner-icon">📅</div>
+                <div class="date-banner-text" id="overview-date-text">Loading...</div>
+            </div>
+
             <!-- Stats Grid -->
             <div class="stats-grid">
-                <div class="stat-card completed">
+                <div class="stat-card completed" onclick="openTicketModal('completed')">
                     <div class="stat-icon">✅</div>
                     <div class="stat-label">Completed Tickets</div>
                     <div class="stat-value" id="completed-count">0</div>
                     <div class="stat-subtitle">Successfully resolved</div>
                 </div>
-                
-                <div class="stat-card processing">
+
+                <div class="stat-card processing" onclick="openTicketModal('processing')">
                     <div class="stat-icon">⚙️</div>
                     <div class="stat-label">Processing Tickets</div>
                     <div class="stat-value" id="processing-count">0</div>
                     <div class="stat-subtitle">Currently in progress</div>
                 </div>
-                
-                <div class="stat-card failed">
+
+                <div class="stat-card failed" onclick="openTicketModal('failed')">
                     <div class="stat-icon">❌</div>
                     <div class="stat-label">Failed Tickets</div>
                     <div class="stat-value" id="failed-count">0</div>
                     <div class="stat-subtitle">Requires attention</div>
                 </div>
-                
-                <div class="stat-card callback">
+
+                <div class="stat-card callback" onclick="openTicketModal('callback')">
                     <div class="stat-icon">📞</div>
                     <div class="stat-label">Callback Required</div>
                     <div class="stat-value" id="callback-count">0</div>
@@ -89,50 +95,50 @@
             </div>
 
             <!-- No Data Message -->
-            <div class="no-data" id="no-data-message" style="display: block;">
-                <div class="no-data-icon">📊</div>
+            <div id="overview-no-data" class="no-data" style="display: none;">
+                <div class="no-data-icon">📭</div>
                 <div class="no-data-text">No data available for the selected date</div>
             </div>
 
             <!-- Charts Section -->
-            <div class="charts-section" id="charts-section" style="display: none;">
-                <div class="chart-card completed" onclick="openModal('completed')">
+            <div class="charts-section" id="overview-charts" style="display: none;">
+                <div class="chart-card completed">
                     <div class="chart-header">
                         <div class="chart-icon">✅</div>
                         <h3 class="chart-title">Completed Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="completed-chart"></canvas>
+                        <canvas id="completedChart"></canvas>
                     </div>
                 </div>
 
-                <div class="chart-card processing" onclick="openModal('processing')">
+                <div class="chart-card processing">
                     <div class="chart-header">
                         <div class="chart-icon">⚙️</div>
                         <h3 class="chart-title">Processing Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="processing-chart"></canvas>
+                        <canvas id="processingChart"></canvas>
                     </div>
                 </div>
 
-                <div class="chart-card failed" onclick="openModal('failed')">
+                <div class="chart-card failed">
                     <div class="chart-header">
                         <div class="chart-icon">❌</div>
                         <h3 class="chart-title">Failed Tickets</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="failed-chart"></canvas>
+                        <canvas id="failedChart"></canvas>
                     </div>
                 </div>
 
-                <div class="chart-card callback" onclick="openModal('callback')">
+                <div class="chart-card callback">
                     <div class="chart-header">
                         <div class="chart-icon">📞</div>
                         <h3 class="chart-title">Callback Required</h3>
                     </div>
                     <div class="chart-canvas-wrapper">
-                        <canvas id="callback-chart"></canvas>
+                        <canvas id="callbackChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -141,32 +147,33 @@
         <!-- Client Dashboard Tab -->
         <div id="client-tab" class="tab-content">
             <div class="client-selector">
-                <label for="client-dropdown">Select Client ID:</label>
-                <select id="client-dropdown" onchange="loadClientData()">
+                <label for="client-id-select">Select Client ID:</label>
+                <select id="client-id-select" onchange="loadClientData()">
                     <option value="">-- Select a Client --</option>
                 </select>
             </div>
 
-            <div id="client-stats" style="display: none;">
+            <div id="client-data-container" style="display: none;">
+                <!-- Stats Grid -->
                 <div class="stats-grid">
                     <div class="stat-card completed">
                         <div class="stat-icon">✅</div>
                         <div class="stat-label">Completed Tickets (Past 7 Days)</div>
                         <div class="stat-value" id="client-completed-count">0</div>
                     </div>
-                    
+
                     <div class="stat-card processing">
                         <div class="stat-icon">⚙️</div>
                         <div class="stat-label">Processing Tickets (Past 7 Days)</div>
                         <div class="stat-value" id="client-processing-count">0</div>
                     </div>
-                    
+
                     <div class="stat-card failed">
                         <div class="stat-icon">❌</div>
                         <div class="stat-label">Failed Tickets (Past 7 Days)</div>
                         <div class="stat-value" id="client-failed-count">0</div>
                     </div>
-                    
+
                     <div class="stat-card callback">
                         <div class="stat-icon">📞</div>
                         <div class="stat-label">Callback Required (Past 7 Days)</div>
@@ -174,6 +181,7 @@
                     </div>
                 </div>
 
+                <!-- Charts -->
                 <div class="charts-section">
                     <div class="chart-card completed">
                         <div class="chart-header">
@@ -181,7 +189,7 @@
                             <h3 class="chart-title">Completed Tickets (Past 7 Days)</h3>
                         </div>
                         <div class="chart-canvas-wrapper">
-                            <canvas id="client-completed-chart"></canvas>
+                            <canvas id="clientCompletedChart"></canvas>
                         </div>
                     </div>
 
@@ -191,7 +199,7 @@
                             <h3 class="chart-title">Processing Tickets (Past 7 Days)</h3>
                         </div>
                         <div class="chart-canvas-wrapper">
-                            <canvas id="client-processing-chart"></canvas>
+                            <canvas id="clientProcessingChart"></canvas>
                         </div>
                     </div>
 
@@ -201,7 +209,7 @@
                             <h3 class="chart-title">Failed Tickets (Past 7 Days)</h3>
                         </div>
                         <div class="chart-canvas-wrapper">
-                            <canvas id="client-failed-chart"></canvas>
+                            <canvas id="clientFailedChart"></canvas>
                         </div>
                     </div>
 
@@ -211,45 +219,45 @@
                             <h3 class="chart-title">Callback Required (Past 7 Days)</h3>
                         </div>
                         <div class="chart-canvas-wrapper">
-                            <canvas id="client-callback-chart"></canvas>
+                            <canvas id="clientCallbackChart"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="no-data" id="client-no-data" style="display: block;">
+            <div id="client-no-data" class="no-data">
                 <div class="no-data-icon">👤</div>
                 <div class="no-data-text">No tickets found for this client</div>
             </div>
         </div>
 
         <!-- Date Range Analysis Tab -->
-        <div id="range-tab" class="tab-content">
+        <div id="date-range-tab" class="tab-content">
             <div class="control-panel">
                 <div class="control-strip">
                     <div class="control-group">
                         <label class="control-label">Start Date</label>
                         <input type="date" id="range-start-date" class="date-input">
                     </div>
-                    
+
                     <div class="control-group">
                         <label class="control-label">End Date</label>
                         <input type="date" id="range-end-date" class="date-input">
                     </div>
-                    
+
                     <div class="control-group">
                         <label class="control-label">Filter by Clients (Optional)</label>
                         <div class="multi-select-wrapper">
-                            <button class="multi-select-trigger" id="client-select-trigger" onclick="toggleClientDropdown(event)">
-                                <span id="selected-clients-text">All Clients</span>
+                            <div class="multi-select-trigger" id="client-multi-select-trigger" onclick="toggleClientDropdown()">
+                                <span id="client-selected-text">All Clients</span>
                                 <span class="dropdown-arrow">▼</span>
-                            </button>
-                            <div class="multi-select-dropdown" id="client-dropdown-menu" style="display: none;">
+                            </div>
+                            <div class="multi-select-dropdown" id="client-dropdown" style="display: none;">
                                 <div class="multi-select-search">
-                                    <input type="text" id="client-search" placeholder="Search clients..." onkeyup="filterClients()">
+                                    <input type="text" id="client-search" placeholder="Search clients..." oninput="filterClients()">
                                 </div>
                                 <div class="multi-select-options" id="client-options">
-                                    <!-- Options populated dynamically -->
+                                    <!-- Dynamically populated -->
                                 </div>
                                 <div class="multi-select-actions">
                                     <button class="btn-small" onclick="selectAllClients()">Select All</button>
@@ -258,80 +266,174 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <button class="btn btn-primary" onclick="loadRangeData()">
-                        <span id="range-load-btn-text">Analyze</span>
-                        <div class="loading" id="range-load-spinner" style="display: none;"></div>
+
+                    <button class="btn btn-primary" onclick="analyzeRange()">
+                        <span>📊</span>
+                        Analyze
                     </button>
                 </div>
             </div>
 
-            <div class="stats-grid" id="range-stats" style="display: none;">
-                <div class="stat-card completed">
-                    <div class="stat-icon">✅</div>
-                    <div class="stat-label">Total Completed Tickets</div>
-                    <div class="stat-value" id="range-completed-count">0</div>
-                    <div class="stat-subtitle" id="range-completed-subtitle">In selected range</div>
-                </div>
-                
-                <div class="stat-card processing">
-                    <div class="stat-icon">⚙️</div>
-                    <div class="stat-label">Total Processing Tickets</div>
-                    <div class="stat-value" id="range-processing-count">0</div>
-                    <div class="stat-subtitle" id="range-processing-subtitle">In selected range</div>
-                </div>
-                
-                <div class="stat-card failed">
-                    <div class="stat-icon">❌</div>
-                    <div class="stat-label">Total Failed Tickets</div>
-                    <div class="stat-value" id="range-failed-count">0</div>
-                    <div class="stat-subtitle" id="range-failed-subtitle">In selected range</div>
-                </div>
-                
-                <div class="stat-card callback">
-                    <div class="stat-icon">📞</div>
-                    <div class="stat-label">Total Callback Required</div>
-                    <div class="stat-value" id="range-callback-count">0</div>
-                    <div class="stat-subtitle" id="range-callback-subtitle">In selected range</div>
-                </div>
-            </div>
-
-            <div class="charts-section" id="range-charts-section" style="display: none;">
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-icon">📈</div>
-                        <h3 class="chart-title">Daily Ticket Trend (All Statuses)</h3>
+            <div id="range-results" style="display: none;">
+                <!-- Stats Grid -->
+                <div class="stats-grid" style="margin-top: 25px;">
+                    <div class="stat-card completed">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-label">Total Completed Tickets</div>
+                        <div class="stat-value" id="range-completed">0</div>
+                        <div class="stat-subtitle">In selected range</div>
                     </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="range-combined-chart"></canvas>
+
+                    <div class="stat-card processing">
+                        <div class="stat-icon">⚙️</div>
+                        <div class="stat-label">Total Processing Tickets</div>
+                        <div class="stat-value" id="range-processing">0</div>
+                        <div class="stat-subtitle">In selected range</div>
+                    </div>
+
+                    <div class="stat-card failed">
+                        <div class="stat-icon">❌</div>
+                        <div class="stat-label">Total Failed Tickets</div>
+                        <div class="stat-value" id="range-failed">0</div>
+                        <div class="stat-subtitle">In selected range</div>
+                    </div>
+
+                    <div class="stat-card callback">
+                        <div class="stat-icon">📞</div>
+                        <div class="stat-label">Total Callback Required</div>
+                        <div class="stat-value" id="range-callback">0</div>
+                        <div class="stat-subtitle">In selected range</div>
                     </div>
                 </div>
-            </div>
 
-            <div id="range-client-breakdown" style="display: none;">
-                <h2 class="section-title">Client Breakdown</h2>
-                <div class="client-breakdown-grid" id="client-breakdown-cards">
-                    <!-- Populated dynamically -->
+                <!-- Charts -->
+                <div class="charts-section" style="margin-top: 25px;">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-icon" style="background: #dbeafe; color: #1e40af;">📈</div>
+                            <h3 class="chart-title">Daily Ticket Trend (All Statuses)</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="rangeTrendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-icon" style="background: #fef3c7; color: #92400e;">👥</div>
+                            <h3 class="chart-title">Client Breakdown</h3>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="rangeClientChart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="no-data" id="range-no-data" style="display: block;">
+            <div id="range-no-data" class="no-data">
                 <div class="no-data-icon">📅</div>
                 <div class="no-data-text">Select a date range to analyze ticket data</div>
             </div>
         </div>
+
+        <!-- Token Analytics Tab -->
+        <div id="token-analytics-tab" class="tab-content">
+            <div class="control-panel">
+                <div class="control-strip">
+                    <div class="control-group">
+                        <label class="control-label">Start Date</label>
+                        <input type="date" id="token-start-date" class="date-input">
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">End Date</label>
+                        <input type="date" id="token-end-date" class="date-input">
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">Client ID</label>
+                        <select id="token-client-select" class="date-input" style="min-width: 200px;">
+                            <option value="all">All Clients</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="analyzeTokens()">
+                        <span>📊</span>
+                        Analyze
+                    </button>
+                </div>
+            </div>
+
+            <div id="token-results" style="display: none;">
+                <!-- Stats Cards -->
+                <div class="stats-grid" style="margin-top: 25px;">
+                    <div class="stat-card" style="border-left-color: #3b82f6;">
+                        <div class="stat-icon" style="background: #dbeafe; color: #1e40af;">
+                            🎯
+                        </div>
+                        <div class="stat-label">Total Tokens</div>
+                        <div class="stat-value" id="token-total-tokens">0</div>
+                        <div class="stat-subtitle">All models combined</div>
+                    </div>
+
+                    <div class="stat-card" style="border-left-color: #10b981;">
+                        <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
+                            💰
+                        </div>
+                        <div class="stat-label">Total Cost</div>
+                        <div class="stat-value" id="token-total-cost">$0.00</div>
+                        <div class="stat-subtitle">Estimated spending</div>
+                    </div>
+
+                    <div class="stat-card" style="border-left-color: #f59e0b;">
+                        <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
+                            📝
+                        </div>
+                        <div class="stat-label">API Requests</div>
+                        <div class="stat-value" id="token-requests">0</div>
+                        <div class="stat-subtitle">Total API calls</div>
+                    </div>
+
+                    <div class="stat-card" style="border-left-color: #8b5cf6;">
+                        <div class="stat-icon" style="background: #ede9fe; color: #5b21b6;">
+                            🤖
+                        </div>
+                        <div class="stat-label">Models Used</div>
+                        <div class="stat-value" id="token-models">0</div>
+                        <div class="stat-subtitle">Different models</div>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div class="chart-card" style="margin-top: 25px;">
+                    <div class="chart-header">
+                        <div class="chart-icon" style="background: #dbeafe; color: #1e40af;">
+                            📊
+                        </div>
+                        <h3 class="chart-title">Token Usage by Model</h3>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="tokenChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="token-no-data" class="no-data">
+                <div class="no-data-icon">📊</div>
+                <div class="no-data-text">Select a date range and client to view token analytics</div>
+            </div>
+        </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Modal for Ticket Details -->
     <div id="ticketModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modal-title">Tickets</h2>
-                <span class="modal-close" onclick="closeModal()">&times;</span>
+                <h2 id="modalTitle">Tickets</h2>
+                <span class="modal-close" onclick="closeTicketModal()">&times;</span>
             </div>
-            <div class="modal-body" id="modal-body">
-                <div class="loading" id="modal-loading"></div>
-                <table class="tickets-table" id="modal-table" style="display: none;">
+            <div class="modal-body">
+                <table class="tickets-table" id="ticketsTable">
                     <thead>
                         <tr>
                             <th>Ticket ID</th>
@@ -342,66 +444,439 @@
                             <th>Request Status</th>
                         </tr>
                     </thead>
-                    <tbody id="modal-table-body"></tbody>
+                    <tbody id="ticketsTableBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast"></div>
+    <script>
+        // DATA LABELS PLUGIN
+        const dataLabelsPlugin = {
+            id: 'dataLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx, data } = chart;
+                ctx.save();
+                data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    if (!meta || !meta.data) return;
+                    meta.data.forEach((point, idx) => {
+                        const val = dataset.data[idx];
+                        if (!val || val === 0) return;
+                        ctx.font = 'bold 13px sans-serif';
+                        ctx.fillStyle = '#1f2937';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        let txt = val.toLocaleString();
+                        if (val >= 1000000) txt = (val/1000000).toFixed(1) + 'M';
+                        else if (val >= 1000) txt = (val/1000).toFixed(1) + 'K';
+                        ctx.fillText(txt, point.x, point.y - 8);
+                    });
+                });
+                ctx.restore();
+            }
+        };
+        if (typeof Chart !== 'undefined') Chart.register(dataLabelsPlugin);
 
-   <script>
-        const datalabelsPlugin = ChartDataLabels;
-        let currentDate = new Date().toISOString().split('T')[0];
-        let chartInstances = {};
-        let isFirstLoad = true;
+        // NUMBER ANIMATION
+        function animateNumber(el, start, end, dur = 1500) {
+            if (!el || start === end) { if (el) el.textContent = end.toLocaleString(); return; }
+            const range = end - start, t0 = performance.now();
+            function update(t) {
+                const p = Math.min((t - t0) / dur, 1), ease = 1 - Math.pow(1 - p, 3);
+                el.textContent = Math.floor(start + range * ease).toLocaleString();
+                if (p < 1) requestAnimationFrame(update);
+                else el.textContent = end.toLocaleString();
+            }
+            requestAnimationFrame(update);
+        }
+
+        function updateStatWithAnimation(id, val) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const cur = parseInt(el.textContent.replace(/,/g, '')) || 0;
+            el.classList.add('animate');
+            animateNumber(el, cur, val);
+            setTimeout(() => el.classList.remove('animate'), 1500);
+        }
+
+        // Global variables
+        let charts = {
+            completed: null,
+            processing: null,
+            failed: null,
+            callback: null,
+            clientCompleted: null,
+            clientProcessing: null,
+            clientFailed: null,
+            clientCallback: null,
+            rangeTrend: null,
+            rangeClient: null,
+            token: null
+        };
+
         let refreshInterval = null;
-        let clientCharts = {};
-        let rangeChartInstance = null;
         let selectedClients = new Set();
-        let activeCounterAnimations = {};
+        let allClients = [];
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date-picker').value = today;
-            document.getElementById('date-picker').max = today;
-            
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            document.getElementById('range-start-date').value = sevenDaysAgo.toISOString().split('T')[0];
-            document.getElementById('range-end-date').value = today;
-            document.getElementById('range-start-date').max = today;
-            document.getElementById('range-end-date').max = today;
-            
-            loadAllClients();
-            restoreState();
-            
-            // Auto-load data on page load with slight delay
-            setTimeout(() => {
-                loadData();
-            }, 100);
-        });
+        // ============================================================================
+        // TAB SWITCHING
+        // ============================================================================
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
 
-        // Click outside to close dropdown
-        document.addEventListener('click', function(event) {
-            const dropdown = document.getElementById('client-dropdown-menu');
-            const trigger = document.getElementById('client-select-trigger');
-            
-            if (dropdown && trigger && !trigger.contains(event.target) && !dropdown.contains(event.target)) {
-                dropdown.style.display = 'none';
-                trigger.classList.remove('open');
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // Add active class to clicked button
+            event.target.classList.add('active');
+
+            // Load data for specific tabs
+            if (tabName === 'overview') {
+                loadOverviewData();
+            } else if (tabName === 'client') {
+                loadClientList();
+            } else if (tabName === 'date-range') {
+                loadClientListForRange();
+            } else if (tabName === 'token-analytics') {
+                loadTokenAnalyticsClients();
+                // Set default dates (last 7 days)
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 7);
+
+                document.getElementById('token-end-date').valueAsDate = endDate;
+                document.getElementById('token-start-date').valueAsDate = startDate;
+            }
+        }
+
+        // ============================================================================
+        // OVERVIEW TAB FUNCTIONS
+        // ============================================================================
+        async function loadOverviewData() {
+            const dateInput = document.getElementById('overview-date');
+            const selectedDate = dateInput.value;
+
+            if (!selectedDate) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/overview?date=${selectedDate}`);
+                const data = await response.json();
+
+                // Update date banner
+                const dateObj = new Date(selectedDate);
+                const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+                document.getElementById('overview-date-text').textContent = formattedDate;
+
+                // Update stats
+                document.getElementById('completed-count').textContent = data.stats.completed || 0;
+                document.getElementById('processing-count').textContent = data.stats.processing || 0;
+                document.getElementById('failed-count').textContent = data.stats.failed || 0;
+                document.getElementById('callback-count').textContent = data.stats.callback || 0;
+
+                // Check if there's data
+                const hasData = data.stats.completed > 0 || data.stats.processing > 0 || 
+                               data.stats.failed > 0 || data.stats.callback > 0;
+
+                if (hasData) {
+                    document.getElementById('overview-no-data').style.display = 'none';
+                    document.getElementById('overview-charts').style.display = 'flex';
+
+                    // Create charts with FIXED scaling
+                    createChart('completedChart', 'Completed', data.charts.completed || {}, '#10b981');
+                    createChart('processingChart', 'Processing', data.charts.processing || {}, '#f59e0b');
+                    createChart('failedChart', 'Failed', data.charts.failed || {}, '#dc2626');
+                    createChart('callbackChart', 'Callback', data.charts.callback || {}, '#8b5cf6');
+                } else {
+                    document.getElementById('overview-no-data').style.display = 'block';
+                    document.getElementById('overview-charts').style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Error loading overview:', error);
+                showToast('Error loading overview data', 'error');
+            }
+        }
+
+        function createChart(canvasId, label, chartData, color) {
+            const ctx = document.getElementById(canvasId);
+
+            if (charts[canvasId.replace('Chart', '')]) {
+                charts[canvasId.replace('Chart', '')].destroy();
+            }
+
+            const labels = Object.keys(chartData);
+            const data = Object.values(chartData);
+
+            // Calculate max value for proper scaling
+            const maxValue = Math.max(...data, 1);
+            const suggestedMax = Math.ceil(maxValue * 1.1); // Add 10% padding
+
+            charts[canvasId.replace('Chart', '')] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        backgroundColor: color + 'CC',
+                        borderColor: color,
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        barPercentage: 0.7,
+                        categoryPercentage: 0.8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            display: false 
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 },
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return label + ': ' + context.parsed.y.toLocaleString() + ' tickets';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: suggestedMax,
+                            grace: '10%',
+                            ticks: { 
+                                font: { size: 12, weight: '600' },
+                                precision: 0,
+                                callback: function(value) {
+                                    if (value >= 1000) {
+                                        return (value / 1000).toFixed(1) + 'K';
+                                    }
+                                    return value;
+                                }
+                            },
+                            grid: { 
+                                color: 'rgba(0, 0, 0, 0.05)',
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            ticks: { 
+                                font: { size: 12, weight: '600' },
+                                maxRotation: 45,
+                                minRotation: 45
+                            },
+                            grid: { 
+                                display: false 
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function manualReload() {
+            loadOverviewData();
+            showToast('Data reloaded successfully', 'success');
+        }
+
+        // Auto-refresh toggle
+        document.getElementById('auto-refresh-toggle').addEventListener('change', function(e) {
+            const intervalInput = document.getElementById('refresh-interval');
+            intervalInput.disabled = !e.target.checked;
+
+            if (e.target.checked) {
+                const seconds = parseInt(intervalInput.value);
+                refreshInterval = setInterval(loadOverviewData, seconds * 1000);
+                showToast(`Auto-refresh enabled (every ${seconds}s)`, 'success');
+            } else {
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
+                showToast('Auto-refresh disabled', 'success');
             }
         });
 
-        function toggleClientDropdown(event) {
-            event.stopPropagation();
-            const dropdown = document.getElementById('client-dropdown-menu');
-            const trigger = document.getElementById('client-select-trigger');
-            
+        // ============================================================================
+        // CLIENT TAB FUNCTIONS
+        // ============================================================================
+        async function loadClientList() {
+            try {
+                const response = await fetch('/api/clients');
+                const data = await response.json();
+
+                const select = document.getElementById('client-id-select');
+                select.innerHTML = '<option value="">-- Select a Client --</option>';
+
+                data.client_ids.forEach(clientId => {
+                    const option = document.createElement('option');
+                    option.value = clientId;
+                    option.textContent = clientId;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading clients:', error);
+            }
+        }
+
+        async function loadClientData() {
+            const clientId = document.getElementById('client-id-select').value;
+
+            if (!clientId) {
+                document.getElementById('client-data-container').style.display = 'none';
+                document.getElementById('client-no-data').style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/client/${clientId}`);
+                const data = await response.json();
+
+                if (data.total_tickets === 0) {
+                    document.getElementById('client-data-container').style.display = 'none';
+                    document.getElementById('client-no-data').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('client-data-container').style.display = 'block';
+                document.getElementById('client-no-data').style.display = 'none';
+
+                // Update stats
+                document.getElementById('client-completed-count').textContent = data.stats.completed || 0;
+                document.getElementById('client-processing-count').textContent = data.stats.processing || 0;
+                document.getElementById('client-failed-count').textContent = data.stats.failed || 0;
+                document.getElementById('client-callback-count').textContent = data.stats.callback || 0;
+
+                // Create charts
+                createClientChart('clientCompletedChart', 'Completed', data.daily.completed || {}, '#10b981');
+                createClientChart('clientProcessingChart', 'Processing', data.daily.processing || {}, '#f59e0b');
+                createClientChart('clientFailedChart', 'Failed', data.daily.failed || {}, '#dc2626');
+                createClientChart('clientCallbackChart', 'Callback', data.daily.callback || {}, '#8b5cf6');
+
+            } catch (error) {
+                console.error('Error loading client data:', error);
+                showToast('Error loading client data', 'error');
+            }
+        }
+
+        function createClientChart(canvasId, label, chartData, color) {
+            const ctx = document.getElementById(canvasId);
+
+            if (charts[canvasId.replace('Chart', '')]) {
+                charts[canvasId.replace('Chart', '')].destroy();
+            }
+
+            const labels = Object.keys(chartData);
+            const data = Object.values(chartData);
+
+            // Calculate max for scaling
+            const maxValue = Math.max(...data, 1);
+            const suggestedMax = Math.ceil(maxValue * 1.1);
+
+            charts[canvasId.replace('Chart', '')] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        backgroundColor: color + '33',
+                        borderColor: color,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 },
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: suggestedMax,
+                            grace: '10%',
+                            ticks: { 
+                                font: { size: 12, weight: '600' },
+                                precision: 0
+                            },
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                        },
+                        x: {
+                            ticks: { font: { size: 12, weight: '600' } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================================================
+        // DATE RANGE TAB FUNCTIONS
+        // ============================================================================
+        async function loadClientListForRange() {
+            try {
+                const response = await fetch('/api/clients');
+                const data = await response.json();
+                allClients = data.client_ids;
+
+                const container = document.getElementById('client-options');
+                container.innerHTML = '';
+
+                allClients.forEach(clientId => {
+                    const div = document.createElement('div');
+                    div.className = 'multi-select-option';
+                    div.innerHTML = `
+                        <input type="checkbox" value="${clientId}" onchange="updateSelectedClients()">
+                        <span>${clientId}</span>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Error loading clients:', error);
+            }
+        }
+
+        function toggleClientDropdown() {
+            const dropdown = document.getElementById('client-dropdown');
+            const trigger = document.getElementById('client-multi-select-trigger');
+
             if (dropdown.style.display === 'none') {
-                dropdown.style.display = 'block';
+                dropdown.style.display = 'flex';
                 trigger.classList.add('open');
             } else {
                 dropdown.style.display = 'none';
@@ -412,866 +887,568 @@
         function filterClients() {
             const searchTerm = document.getElementById('client-search').value.toLowerCase();
             const options = document.querySelectorAll('.multi-select-option');
-            
+
             options.forEach(option => {
                 const text = option.textContent.toLowerCase();
                 option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
             });
         }
 
+        function updateSelectedClients() {
+            selectedClients.clear();
+            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]:checked');
+            checkboxes.forEach(cb => selectedClients.add(cb.value));
+
+            const text = selectedClients.size === 0 ? 'All Clients' : `${selectedClients.size} client(s) selected`;
+            document.getElementById('client-selected-text').textContent = text;
+        }
+
         function selectAllClients() {
             const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = true;
-                selectedClients.add(cb.value);
-            });
-            updateSelectedClientsText();
+            checkboxes.forEach(cb => cb.checked = true);
+            updateSelectedClients();
         }
 
         function clearAllClients() {
             const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = false;
-            });
-            selectedClients.clear();
-            updateSelectedClientsText();
+            checkboxes.forEach(cb => cb.checked = false);
+            updateSelectedClients();
         }
 
-        function handleClientSelection(checkbox) {
-            if (checkbox.checked) {
-                selectedClients.add(checkbox.value);
-            } else {
-                selectedClients.delete(checkbox.value);
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const wrapper = document.querySelector('.multi-select-wrapper');
+            if (wrapper && !wrapper.contains(event.target)) {
+                document.getElementById('client-dropdown').style.display = 'none';
+                document.getElementById('client-multi-select-trigger').classList.remove('open');
             }
-            updateSelectedClientsText();
-        }
+        });
 
-        function updateSelectedClientsText() {
-            const text = document.getElementById('selected-clients-text');
-            const count = selectedClients.size;
-            
-            if (count === 0) {
-                text.textContent = 'All Clients';
-            } else if (count === 1) {
-                text.textContent = Array.from(selectedClients)[0];
-            } else {
-                text.textContent = `${count} clients selected`;
-            }
-        }
-
-        async function loadRangeClients() {
-            try {
-                const response = await fetch('/api/all-clients');
-                const data = await response.json();
-                
-                const optionsContainer = document.getElementById('client-options');
-                optionsContainer.innerHTML = data.client_ids.map(clientId => `
-                    <label class="multi-select-option">
-                        <input type="checkbox" value="${clientId}" onchange="handleClientSelection(this)">
-                        <span>${clientId}</span>
-                    </label>
-                `).join('');
-                
-            } catch (error) {
-                console.error('Error loading clients:', error);
-            }
-        }
-
-        async function loadRangeData() {
+        async function analyzeRange() {
             const startDate = document.getElementById('range-start-date').value;
             const endDate = document.getElementById('range-end-date').value;
-            
+
             if (!startDate || !endDate) {
                 showToast('Please select both start and end dates', 'error');
                 return;
             }
-            
-            const loadBtn = document.getElementById('range-load-btn-text');
-            const spinner = document.getElementById('range-load-spinner');
-            
-            loadBtn.style.display = 'none';
-            spinner.style.display = 'inline-block';
-            
+
+            const resultsDiv = document.getElementById('range-results');
+            const noDataDiv = document.getElementById('range-no-data');
+
+            resultsDiv.style.display = 'none';
+            noDataDiv.style.display = 'block';
+            noDataDiv.innerHTML = '<div class="no-data-icon"><div class="loading"></div></div><div class="no-data-text">Analyzing data...</div>';
+
             try {
                 let url = `/api/ticket-data-range?start_date=${startDate}&end_date=${endDate}`;
-                
+
                 if (selectedClients.size > 0) {
                     url += `&client_ids=${Array.from(selectedClients).join(',')}`;
                 }
-                
+
                 const response = await fetch(url);
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to load data');
-                }
-                
                 const data = await response.json();
-                
+
                 if (!data.success) {
-                    throw new Error('Invalid response from server');
+                    throw new Error(data.error || 'Failed to fetch data');
                 }
-                
-                document.getElementById('range-no-data').style.display = 'none';
-                document.getElementById('range-stats').style.display = 'grid';
-                
-                const subtitle = selectedClients.size > 0 
-                    ? `${selectedClients.size} client(s), ${data.total_days} days`
-                    : `All clients, ${data.total_days} days`;
-                
-                document.getElementById('range-completed-subtitle').textContent = subtitle;
-                document.getElementById('range-processing-subtitle').textContent = subtitle;
-                document.getElementById('range-failed-subtitle').textContent = subtitle;
-                document.getElementById('range-callback-subtitle').textContent = subtitle;
-                
-                animateCounter('range-completed-count', data.total_stats.completed);
-                animateCounter('range-processing-count', data.total_stats.processing);
-                animateCounter('range-failed-count', data.total_stats.failed);
-                animateCounter('range-callback-count', data.total_stats.callback);
-                
-                document.getElementById('range-charts-section').style.display = 'flex';
-                updateRangeChart(data.daily_breakdown);
-                
-                if (data.client_breakdown) {
-                    displayClientBreakdown(data.client_breakdown);
-                } else {
-                    document.getElementById('range-client-breakdown').style.display = 'none';
-                }
-                
+
+                // Update stats
+                document.getElementById('range-completed').textContent = data.total_stats.completed || 0;
+                document.getElementById('range-processing').textContent = data.total_stats.processing || 0;
+                document.getElementById('range-failed').textContent = data.total_stats.failed || 0;
+                document.getElementById('range-callback').textContent = data.total_stats.callback || 0;
+
+                // Create trend chart
+                createRangeTrendChart(data.daily_breakdown);
+
+                // Create client breakdown chart
+                createRangeClientChart(data.client_breakdown);
+
+                noDataDiv.style.display = 'none';
+                resultsDiv.style.display = 'block';
+
+                showToast('Analysis completed successfully', 'success');
+
             } catch (error) {
-                console.error('Error loading range data:', error);
-                showToast(error.message || 'Failed to load data', 'error');
-                document.getElementById('range-no-data').style.display = 'block';
-                document.getElementById('range-stats').style.display = 'none';
-                document.getElementById('range-charts-section').style.display = 'none';
-                document.getElementById('range-client-breakdown').style.display = 'none';
-            } finally {
-                loadBtn.style.display = 'inline';
-                spinner.style.display = 'none';
+                console.error('Range analysis error:', error);
+                noDataDiv.innerHTML = '<div class="no-data-icon">❌</div><div class="no-data-text">Error analyzing data: ' + error.message + '</div>';
+                showToast('Error analyzing data', 'error');
             }
         }
 
-        function updateRangeChart(dailyData) {
-            const canvas = document.getElementById('range-combined-chart');
-            
-            if (rangeChartInstance) {
-                rangeChartInstance.destroy();
+        function createRangeTrendChart(dailyData) {
+            const ctx = document.getElementById('rangeTrendChart');
+
+            if (charts.rangeTrend) {
+                charts.rangeTrend.destroy();
             }
-            
-            const ctx = canvas.getContext('2d');
-            
-            rangeChartInstance = new Chart(ctx, {
-                type: 'bar',
+
+            charts.rangeTrend = new Chart(ctx, {
+                type: 'line',
                 data: {
-                    labels: dailyData.dates,
+                    labels: dailyData.dates || [],
                     datasets: [
                         {
                             label: 'Completed',
-                            data: dailyData.completed,
-                            backgroundColor: '#10b981',
-                            borderRadius: 8,
-                            borderSkipped: false,
-                            maxBarThickness: 60,
-                            hoverBackgroundColor: '#059669'
+                            data: dailyData.completed || [],
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b98133',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
                         },
                         {
                             label: 'Processing',
-                            data: dailyData.processing,
-                            backgroundColor: '#f59e0b',
-                            borderRadius: 8,
-                            borderSkipped: false,
-                            maxBarThickness: 60,
-                            hoverBackgroundColor: '#d97706'
+                            data: dailyData.processing || [],
+                            borderColor: '#f59e0b',
+                            backgroundColor: '#f59e0b33',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
                         },
                         {
                             label: 'Failed',
-                            data: dailyData.failed,
-                            backgroundColor: '#dc2626',
-                            borderRadius: 8,
-                            borderSkipped: false,
-                            maxBarThickness: 60,
-                            hoverBackgroundColor: '#b91c1c'
+                            data: dailyData.failed || [],
+                            borderColor: '#dc2626',
+                            backgroundColor: '#dc262633',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
                         },
                         {
                             label: 'Callback',
-                            data: dailyData.callback,
-                            backgroundColor: '#8b5cf6',
-                            borderRadius: 8,
-                            borderSkipped: false,
-                            maxBarThickness: 60,
-                            hoverBackgroundColor: '#7c3aed'
+                            data: dailyData.callback || [],
+                            borderColor: '#8b5cf6',
+                            backgroundColor: '#8b5cf633',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    onHover: (event, activeElements) => {
-                        event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
-                    },
                     plugins: {
                         legend: {
                             display: true,
                             position: 'top',
-                        },
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'top',
-                            offset: 4,
-                            formatter: (value) => value > 0 ? value.toLocaleString() : '',
-                            color: '#374151',
-                            font: { weight: 'bold', size: 11 }
+                            labels: {
+                                font: { size: 14, weight: '600' },
+                                padding: 15,
+                                usePointStyle: true
+                            }
                         },
                         tooltip: {
                             backgroundColor: 'rgba(0, 0, 0, 0.8)',
                             padding: 12,
                             titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 }
+                            bodyFont: { size: 13 },
+                            cornerRadius: 8
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: { precision: 0 },
-                            grace: '15%',
-                            grid: { color: '#f3f4f6' }
+                            ticks: { 
+                                font: { size: 12, weight: '600' },
+                                precision: 0
+                            },
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
                         },
                         x: {
+                            ticks: { font: { size: 12, weight: '600' } },
                             grid: { display: false }
                         }
-                    },
-                    animation: {
-                        duration: 1000,
-                        easing: 'easeOutQuart',
-                        animateScale: true,
-                        animateRotate: true
-                    },
-                    interaction: {
-                        mode: 'point',
-                        intersect: true
-                    },
-                    elements: {
-                        bar: {
-                            borderWidth: 0,
-                            hoverBorderWidth: 2,
-                            hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
-                        }
                     }
-                },
-                plugins: [datalabelsPlugin]
+                }
             });
         }
 
-        function displayClientBreakdown(clientData) {
-            const container = document.getElementById('client-breakdown-cards');
-            const section = document.getElementById('range-client-breakdown');
-            
-            section.style.display = 'block';
-            
-            container.innerHTML = Object.entries(clientData).map(([clientId, stats]) => `
-                <div class="client-card">
-                    <div class="client-card-header">${clientId}</div>
-                    <div class="client-card-stats">
-                        <div class="client-stat-row">
-                            <span class="client-stat-label">Completed:</span>
-                            <span class="client-stat-value completed">${stats.completed.toLocaleString()}</span>
-                        </div>
-                        <div class="client-stat-row">
-                            <span class="client-stat-label">Processing:</span>
-                            <span class="client-stat-value processing">${stats.processing.toLocaleString()}</span>
-                        </div>
-                        <div class="client-stat-row">
-                            <span class="client-stat-label">Failed:</span>
-                            <span class="client-stat-value failed">${stats.failed.toLocaleString()}</span>
-                        </div>
-                        <div class="client-stat-row">
-                            <span class="client-stat-label">Callback:</span>
-                            <span class="client-stat-value callback">${stats.callback.toLocaleString()}</span>
-                        </div>
-                        <div class="client-stat-row" style="border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;">
-                            <span class="client-stat-label" style="font-weight: 600;">Total:</span>
-                            <span class="client-stat-value" style="font-weight: 700;">${stats.total.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
+        function createRangeClientChart(clientData) {
+            const ctx = document.getElementById('rangeClientChart');
 
-        // Tab switching
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            if (tab === 'overview') {
-                document.querySelectorAll('.tab-btn')[0].classList.add('active');
-                document.getElementById('overview-tab').classList.add('active');
-            } else if (tab === 'client') {
-                document.querySelectorAll('.tab-btn')[1].classList.add('active');
-                document.getElementById('client-tab').classList.add('active');
-            } else if (tab === 'range') {
-                document.querySelectorAll('.tab-btn')[2].classList.add('active');
-                document.getElementById('range-tab').classList.add('active');
-                
-                if (!document.getElementById('client-options').children.length) {
-                    loadRangeClients();
-                }
+            if (charts.rangeClient) {
+                charts.rangeClient.destroy();
             }
-            
-            saveState();
-        }
 
-        // Load data
-        async function loadData() {
-            const selectedDate = document.getElementById('date-picker').value;
-            currentDate = selectedDate;
-            
-            const loadBtn = document.getElementById('load-btn-text');
-            const spinner = document.getElementById('load-spinner');
-            
-            loadBtn.style.display = 'none';
-            spinner.style.display = 'inline-block';
+            const clients = Object.keys(clientData).slice(0, 10);
+            const totals = clients.map(client => clientData[client].total);
 
-            try {
-                const response = await fetch(`/api/ticket-data?date=${currentDate}`);
-                const data = await response.json();
-
-                if (data.message === 'No data available') {
-                    document.getElementById('no-data-message').style.display = 'block';
-                    document.getElementById('charts-section').style.display = 'none';
-                    updateStatCards(0, 0, 0, 0);
-                } else {
-                    document.getElementById('no-data-message').style.display = 'none';
-                    document.getElementById('charts-section').style.display = 'flex';
-                    
-                    const completedTotal = data.completed.reduce((a, b) => a + b, 0);
-                    const processingTotal = data.processing.reduce((a, b) => a + b, 0);
-                    const failedTotal = data.failed.reduce((a, b) => a + b, 0);
-                    const callbackTotal = data.callback.reduce((a, b) => a + b, 0);
-                    
-                    updateStatCards(completedTotal, processingTotal, failedTotal, callbackTotal);
-                    updateCharts(data);
-                }
-                
-                isFirstLoad = false;
-                
-            } catch (error) {
-                console.error('Error loading data:', error);
-                showToast('Failed to load data', 'error');
-            } finally {
-                loadBtn.style.display = 'inline';
-                spinner.style.display = 'none';
-            }
-        }
-
-        function updateStatCards(completed, processing, failed, callback) {
-            animateCounter('completed-count', completed);
-            animateCounter('processing-count', processing);
-            animateCounter('failed-count', failed);
-            animateCounter('callback-count', callback);
-        }
-
-        function animateCounter(elementId, targetValue) {
-            const element = document.getElementById(elementId);
-            if (!element) return;
-            
-            // Clear any existing animation for this element
-            if (activeCounterAnimations[elementId]) {
-                clearInterval(activeCounterAnimations[elementId]);
-                delete activeCounterAnimations[elementId];
-            }
-            
-            const duration = isFirstLoad ? 1000 : 500;
-            const startValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
-            
-            // If values are the same, just update and return
-            if (startValue === targetValue) {
-                element.textContent = targetValue.toLocaleString();
-                return;
-            }
-            
-            const increment = (targetValue - startValue) / (duration / 16);
-            let currentValue = startValue;
-
-            const timer = setInterval(() => {
-                currentValue += increment;
-                if ((increment > 0 && currentValue >= targetValue) || (increment < 0 && currentValue <= targetValue)) {
-                    element.textContent = targetValue.toLocaleString();
-                    clearInterval(timer);
-                    delete activeCounterAnimations[elementId];
-                } else {
-                    element.textContent = Math.round(currentValue).toLocaleString();
-                }
-            }, 16);
-            
-            activeCounterAnimations[elementId] = timer;
-        }
-
-        function updateCharts(data) {
-            createOrUpdateChart('completed', data.client_ids, data.completed, '#10b981');
-            createOrUpdateChart('processing', data.client_ids, data.processing, '#f59e0b');
-            createOrUpdateChart('failed', data.client_ids, data.failed, '#dc2626');
-            createOrUpdateChart('callback', data.client_ids, data.callback, '#8b5cf6');
-        }
-
-        function createOrUpdateChart(type, labels, data, color) {
-            const canvasId = `${type}-chart`;
-            const canvas = document.getElementById(canvasId);
-            
-            if (chartInstances[type]) {
-                chartInstances[type].destroy();
-            }
-            
-            const hoverColors = {
-                '#10b981': '#059669',
-                '#f59e0b': '#d97706',
-                '#dc2626': '#b91c1c',
-                '#8b5cf6': '#7c3aed'
-            };
-            
-            const ctx = canvas.getContext('2d');
-            chartInstances[type] = new Chart(ctx, {
+            charts.rangeClient = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: clients,
                     datasets: [{
-                        label: 'Tickets',
-                        data: data,
-                        backgroundColor: color,
-                        hoverBackgroundColor: hoverColors[color],
-                        borderRadius: 8,
-                        borderSkipped: false,
-                        maxBarThickness: 80
+                        label: 'Total Tickets',
+                        data: totals,
+                        backgroundColor: '#3b82f6CC',
+                        borderColor: '#3b82f6',
+                        borderWidth: 2,
+                        borderRadius: 8
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    onClick: (event, activeElements) => {
-                        if (activeElements.length > 0) {
-                            openModal(type);
-                        }
-                    },
-                    onHover: (event, activeElements) => {
-                        event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
-                    },
+                    indexAxis: 'y',
                     plugins: {
                         legend: { display: false },
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'top',
-                            offset: 4,
-                            formatter: (value) => value > 0 ? value.toLocaleString() : '',
-                            color: '#374151',
-                            font: { weight: 'bold', size: 12 }
-                        },
                         tooltip: {
                             backgroundColor: 'rgba(0, 0, 0, 0.8)',
                             padding: 12,
                             titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 }
+                            bodyFont: { size: 13 },
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    const client = context.label;
+                                    const data = clientData[client];
+                                    return [
+                                        `Total: ${data.total}`,
+                                        `Completed: ${data.completed}`,
+                                        `Processing: ${data.processing}`,
+                                        `Failed: ${data.failed}`,
+                                        `Callback: ${data.callback}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { 
+                                font: { size: 12, weight: '600' },
+                                precision: 0
+                            },
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                        },
+                        y: {
+                            ticks: { font: { size: 12, weight: '600' } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================================================
+        // TOKEN ANALYTICS FUNCTIONS
+        // ============================================================================
+        async function loadTokenAnalyticsClients() {
+            const select = document.getElementById('token-client-select');
+
+            if (select.options.length > 1) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/clients');
+                const data = await response.json();
+
+                select.innerHTML = '<option value="all">All Clients</option>';
+
+                data.client_ids.forEach(clientId => {
+                    const option = document.createElement('option');
+                    option.value = clientId;
+                    option.textContent = clientId;
+                    select.appendChild(option);
+                });
+
+                console.log(`Loaded ${data.client_ids.length} clients for token analytics`);
+            } catch (error) {
+                console.error('Error loading clients for token analytics:', error);
+                showToast('Error loading client list', 'error');
+            }
+        }
+
+        async function analyzeTokens() {
+            const startDate = document.getElementById('token-start-date').value;
+            const endDate = document.getElementById('token-end-date').value;
+            const clientId = document.getElementById('token-client-select').value;
+
+            if (!startDate || !endDate) {
+                showToast('Please select both start and end dates', 'error');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('token-results');
+            const noDataDiv = document.getElementById('token-no-data');
+
+            resultsDiv.style.display = 'none';
+            noDataDiv.style.display = 'block';
+            noDataDiv.innerHTML = '<div class="no-data-icon"><div class="loading"></div></div><div class="no-data-text">Loading token analytics...</div>';
+
+            try {
+                const params = new URLSearchParams({
+                    start_date: startDate,
+                    end_date: endDate
+                });
+
+                if (clientId && clientId !== 'all') {
+                    params.append('client_id', clientId);
+                }
+
+                const response = await fetch(`/api/token-analytics?${params}`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to fetch token analytics');
+                }
+
+                if (data.models.length === 0) {
+                    noDataDiv.innerHTML = '<div class="no-data-icon">📊</div><div class="no-data-text">No token usage data found for the selected period</div>';
+                    return;
+                }
+
+                // Update stats cards
+                document.getElementById('token-total-tokens').textContent = data.totals.total_tokens.toLocaleString();
+                document.getElementById('token-total-cost').textContent = '$' + data.totals.total_cost.toFixed(4);
+                document.getElementById('token-requests').textContent = data.totals.request_count.toLocaleString();
+                document.getElementById('token-models').textContent = data.models.length;
+
+                // Create chart
+                createTokenChart(data.models);
+
+                noDataDiv.style.display = 'none';
+                resultsDiv.style.display = 'block';
+
+                showToast('Token analytics loaded successfully', 'success');
+
+            } catch (error) {
+                console.error('Token analytics error:', error);
+                noDataDiv.innerHTML = '<div class="no-data-icon">❌</div><div class="no-data-text">Error loading token analytics: ' + error.message + '</div>';
+                showToast('Error loading token analytics', 'error');
+            }
+        }
+
+        function createTokenChart(models) {
+            const ctx = document.getElementById('tokenChart');
+
+            if (charts.token) {
+                charts.token.destroy();
+            }
+
+            const labels = models.map(m => m.model);
+            const tokenData = models.map(m => m.total_tokens);
+            const inputCosts = models.map(m => m.input_cost);
+            const outputCosts = models.map(m => m.output_cost);
+            const thoughtsCosts = models.map(m => m.thoughts_cost);
+            const totalCosts = models.map(m => m.total_cost);
+
+            const backgroundColors = models.map((_, i) => {
+                const hue = (i * 360 / models.length) % 360;
+                return `hsla(${hue}, 70%, 60%, 0.8)`;
+            });
+
+            const borderColors = models.map((_, i) => {
+                const hue = (i * 360 / models.length) % 360;
+                return `hsla(${hue}, 70%, 50%, 1)`;
+            });
+
+            // Calculate max for scaling
+            const maxValue = Math.max(...tokenData, 1);
+            const suggestedMax = Math.ceil(maxValue * 1.1);
+
+            charts.token = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Tokens',
+                        data: tokenData,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        inputCosts: inputCosts,
+                        outputCosts: outputCosts,
+                        thoughtsCosts: thoughtsCosts,
+                        totalCosts: totalCosts
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: { size: 14, weight: '600' },
+                                padding: 15,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            padding: 16,
+                            titleFont: { size: 15, weight: 'bold' },
+                            bodyFont: { size: 14 },
+                            bodySpacing: 6,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                title: function(context) {
+                                    return context[0].label;
+                                },
+                                label: function(context) {
+                                    const index = context.dataIndex;
+                                    const dataset = context.dataset;
+
+                                    return [
+                                        `Total Tokens: ${context.parsed.y.toLocaleString()}`,
+                                        '',
+                                        `💵 Cost Breakdown:`,
+                                        `  Input Cost: $${dataset.inputCosts[index].toFixed(6)}`,
+                                        `  Output Cost: $${dataset.outputCosts[index].toFixed(6)}`,
+                                        dataset.thoughtsCosts[index] > 0 ? `  Thoughts Cost: $${dataset.thoughtsCosts[index].toFixed(6)}` : null,
+                                        `  ───────────────`,
+                                        `  Total Cost: $${dataset.totalCosts[index].toFixed(6)}`
+                                    ].filter(line => line !== null);
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: { precision: 0 },
-                            grace: '15%',
-                            grid: { color: '#f3f4f6' }
+                            suggestedMax: suggestedMax,
+                            grace: '10%',
+                            ticks: {
+                                font: { size: 12, weight: '600' },
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(1) + 'K';
+                                    }
+                                    return value;
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Total Tokens',
+                                font: { size: 14, weight: 'bold' }
+                            }
                         },
                         x: {
-                            grid: { display: false }
+                            ticks: {
+                                font: { size: 12, weight: '600' },
+                                maxRotation: 45,
+                                minRotation: 45
+                            },
+                            grid: {
+                                display: false
+                            }
                         }
-                    },
-                    animation: {
-                        duration: isFirstLoad ? 1500 : 500,
-                        easing: 'easeOutQuart',
-                        animateScale: true,
-                        animateRotate: true
                     },
                     interaction: {
-                        mode: 'point',
-                        intersect: true
-                    },
-                    elements: {
-                        bar: {
-                            borderWidth: 0,
-                            hoverBorderWidth: 2,
-                            hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
-                        }
+                        intersect: false,
+                        mode: 'index'
                     }
-                },
-                plugins: [datalabelsPlugin]
+                }
             });
         }
 
-        async function loadAllClients() {
+        // ============================================================================
+        // MODAL FUNCTIONS
+        // ============================================================================
+        async function openTicketModal(status) {
+            const date = document.getElementById('overview-date').value;
+            if (!date) return;
+
             try {
-                const response = await fetch('/api/all-clients');
+                const response = await fetch(`/api/tickets?date=${date}&status=${status}`);
                 const data = await response.json();
-                
-                const dropdown = document.getElementById('client-dropdown');
-                data.client_ids.forEach(clientId => {
-                    const option = document.createElement('option');
-                    option.value = clientId;
-                    option.textContent = clientId;
-                    dropdown.appendChild(option);
+
+                const modal = document.getElementById('ticketModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const tableBody = document.getElementById('ticketsTableBody');
+
+                const statusColors = {
+                    'completed': 'modal-title-completed',
+                    'processing': 'modal-title-processing',
+                    'failed': 'modal-title-failed',
+                    'callback': 'modal-title-callback'
+                };
+                modalTitle.className = statusColors[status] || '';
+                modalTitle.textContent = `${status.charAt(0).toUpperCase() + status.slice(1)} Tickets (${data.tickets.length})`;
+
+                tableBody.innerHTML = '';
+                data.tickets.forEach(ticket => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${ticket.ticket_id}</td>
+                        <td>${ticket.client_id}</td>
+                        <td><span class="status-badge ${status}">${status}</span></td>
+                        <td>${new Date(ticket.created_at).toLocaleString()}</td>
+                        <td>${ticket.auto_qa_status || '-'}</td>
+                        <td>${ticket.request_status || '-'}</td>
+                    `;
+                    tableBody.appendChild(row);
                 });
-            } catch (error) {
-                console.error('Error loading clients:', error);
-            }
-        }
 
-        async function loadClientData() {
-            const clientId = document.getElementById('client-dropdown').value;
-            
-            if (!clientId) {
-                document.getElementById('client-no-data').style.display = 'block';
-                document.getElementById('client-stats').style.display = 'none';
-                return;
-            }
+                modal.classList.add('is-visible');
+                document.body.classList.add('modal-open');
 
-            try {
-                const response = await fetch(`/api/client-tickets-7days?client_id=${clientId}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    document.getElementById('client-no-data').style.display = 'none';
-                    document.getElementById('client-stats').style.display = 'block';
-
-                    animateCounter('client-completed-count', data.all_time_stats.completed);
-                    animateCounter('client-processing-count', data.all_time_stats.processing);
-                    animateCounter('client-failed-count', data.all_time_stats.failed);
-                    animateCounter('client-callback-count', data.all_time_stats.callback);
-
-                    updateClientCharts(data.seven_day_data);
-                }
-            } catch (error) {
-                console.error('Error loading client data:', error);
-            }
-        }
-
-        function updateClientCharts(sevenDayData) {
-            const types = ['completed', 'processing', 'failed', 'callback'];
-            const colors = {
-                completed: '#10b981',
-                processing: '#f59e0b',
-                failed: '#dc2626',
-                callback: '#8b5cf6'
-            };
-            
-            const hoverColors = {
-                completed: '#059669',
-                processing: '#d97706',
-                failed: '#b91c1c',
-                callback: '#7c3aed'
-            };
-
-            types.forEach(type => {
-                const canvasId = `client-${type}-chart`;
-                const canvas = document.getElementById(canvasId);
-                
-                if (clientCharts[type]) {
-                    clientCharts[type].destroy();
-                }
-                
-                const ctx = canvas.getContext('2d');
-                clientCharts[type] = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: sevenDayData.dates,
-                        datasets: [{
-                            label: type.charAt(0).toUpperCase() + type.slice(1),
-                            data: sevenDayData[type],
-                            backgroundColor: colors[type],
-                            hoverBackgroundColor: hoverColors[type],
-                            borderRadius: 8,
-                            borderSkipped: false,
-                            maxBarThickness: 80
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        onHover: (event, activeElements) => {
-                            event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            datalabels: {
-                                anchor: 'end',
-                                align: 'top',
-                                offset: 4,
-                                formatter: (value) => value > 0 ? value.toLocaleString() : '',
-                                color: '#374151',
-                                font: { weight: 'bold', size: 12 }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                padding: 12,
-                                titleFont: { size: 14, weight: 'bold' },
-                                bodyFont: { size: 13 }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { precision: 0 },
-                                grace: '15%',
-                                grid: { color: '#f3f4f6' }
-                            },
-                            x: {
-                                grid: { display: false }
-                            }
-                        },
-                        animation: {
-                            duration: 1000,
-                            easing: 'easeOutQuart',
-                            animateScale: true,
-                            animateRotate: true
-                        },
-                        interaction: {
-                            mode: 'point',
-                            intersect: true
-                        },
-                        elements: {
-                            bar: {
-                                borderWidth: 0,
-                                hoverBorderWidth: 2,
-                                hoverBorderColor: 'rgba(0, 0, 0, 0.2)'
-                            }
-                        }
-                    },
-                    plugins: [datalabelsPlugin]
-                });
-            });
-        }
-
-        async function openModal(status) {
-            const modal = document.getElementById('ticketModal');
-            const modalTitle = document.getElementById('modal-title');
-            const modalLoading = document.getElementById('modal-loading');
-            const modalTable = document.getElementById('modal-table');
-            const tableBody = document.getElementById('modal-table-body');
-
-            const statusTitles = {
-                'completed': 'Completed Tickets',
-                'processing': 'Processing Tickets',
-                'failed': 'Failed Tickets',
-                'callback': 'Callback Required Tickets'
-            };
-
-            const statusClasses = {
-                'completed': 'modal-title-completed',
-                'processing': 'modal-title-processing',
-                'failed': 'modal-title-failed',
-                'callback': 'modal-title-callback'
-            };
-
-            modalTitle.textContent = statusTitles[status] || 'Tickets';
-            modalTitle.className = statusClasses[status] || '';
-            modal.classList.add('is-visible');
-            document.body.classList.add('modal-open');
-            modalLoading.style.display = 'block';
-            modalTable.style.display = 'none';
-
-            try {
-                const response = await fetch(`/api/detailed-tickets?date=${currentDate}&status=${status}`);
-                const data = await response.json();
-
-                if (data.tickets && data.tickets.length > 0) {
-                    tableBody.innerHTML = data.tickets.map(ticket => `
-                        <tr>
-                            <td>${ticket.ticket_id}</td>
-                            <td>${ticket.client_id}</td>
-                            <td><span class="status-badge ${status}">${ticket.status}</span></td>
-                            <td>${ticket.created_at}</td>
-                            <td>${ticket.auto_qa_status}</td>
-                            <td>${ticket.request_status}</td>
-                        </tr>
-                    `).join('');
-                    modalTable.style.display = 'table';
-                } else {
-                    tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No tickets found</td></tr>';
-                    modalTable.style.display = 'table';
-                }
             } catch (error) {
                 console.error('Error loading tickets:', error);
-                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #dc2626;">Error loading tickets</td></tr>';
-                modalTable.style.display = 'table';
-            } finally {
-                modalLoading.style.display = 'none';
+                showToast('Error loading tickets', 'error');
             }
         }
 
-        function closeModal() {
+        function closeTicketModal() {
             const modal = document.getElementById('ticketModal');
             modal.classList.remove('is-visible');
             document.body.classList.remove('modal-open');
         }
 
-        window.onclick = function(event) {
-            const modal = document.getElementById('ticketModal');
-            if (event.target === modal) {
-                closeModal();
+        document.getElementById('ticketModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeTicketModal();
             }
-        }
+        });
 
-        function showToast(message, type = 'info') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
+        // ============================================================================
+        // UTILITY FUNCTIONS
+        // ============================================================================
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.style.display = 'block';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
             setTimeout(() => {
-                toast.style.display = 'none';
+                toast.remove();
             }, 3000);
         }
 
-        function toggleAutoRefresh() {
-            const toggle = document.getElementById('auto-refresh-toggle');
-            const intervalInput = document.getElementById('refresh-interval');
-            
-            if (toggle.checked) {
-                intervalInput.disabled = false;
-                const seconds = parseInt(intervalInput.value);
-                startAutoRefresh(seconds);
-            } else {
-                intervalInput.disabled = true;
-                stopAutoRefresh();
-            }
-            
-            saveState();
-        }
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('overview-date').value = today;
 
-        function updateRefreshInterval() {
-            const toggle = document.getElementById('auto-refresh-toggle');
-            if (toggle.checked) {
-                const seconds = parseInt(document.getElementById('refresh-interval').value);
-                startAutoRefresh(seconds);
-            }
-            saveState();
-        }
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
 
-        let refreshIntervalId = 0;
+            document.getElementById('range-end-date').valueAsDate = endDate;
+            document.getElementById('range-start-date').valueAsDate = startDate;
 
-        function startAutoRefresh(seconds) {
-            stopAutoRefresh();
-            
-            refreshIntervalId++;
-            const currentId = refreshIntervalId;
-            
-            refreshInterval = setInterval(() => {
-                if (currentId !== refreshIntervalId) {
-                    clearInterval(refreshInterval);
-                    return;
-                }
-                
-                isFirstLoad = false;
-                loadData();
-                
-                const activeTab = document.querySelector('.tab-btn.active').textContent;
-                if (activeTab.includes('Client')) {
-                    const clientId = document.getElementById('client-dropdown').value;
-                    if (clientId) {
-                        loadClientData();
-                    }
-                }
-            }, seconds * 1000);
-            
-            showToast('Auto-refresh enabled', 'success');
-        }
+            loadOverviewData();
 
-        function stopAutoRefresh() {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-                refreshInterval = null;
-            }
-            refreshIntervalId++;
-        }
-
-        window.addEventListener('beforeunload', () => {
-            stopAutoRefresh();
-            // Clear all counter animations
-            Object.values(activeCounterAnimations).forEach(timer => clearInterval(timer));
+            document.getElementById('overview-date').addEventListener('change', loadOverviewData);
         });
-
-        function saveState() {
-            const activeBtn = document.querySelector('.tab-btn.active');
-            let activeTab = 'overview';
-            if (activeBtn) {
-                if (activeBtn.textContent.includes('Client')) activeTab = 'client';
-                else if (activeBtn.textContent.includes('Range')) activeTab = 'range';
-            }
-            
-            const state = {
-                activeTab: activeTab,
-                selectedDate: document.getElementById('date-picker').value,
-                selectedClient: document.getElementById('client-dropdown').value,
-                autoRefreshEnabled: document.getElementById('auto-refresh-toggle').checked,
-                refreshInterval: document.getElementById('refresh-interval').value,
-                rangeStartDate: document.getElementById('range-start-date')?.value,
-                rangeEndDate: document.getElementById('range-end-date')?.value,
-                selectedClients: Array.from(selectedClients)
-            };
-            localStorage.setItem('dashboardState', JSON.stringify(state));
-        }
-
-        function restoreState() {
-            try {
-                const savedState = localStorage.getItem('dashboardState');
-                if (!savedState) return;
-                
-                const state = JSON.parse(savedState);
-                
-                if (state.selectedDate) {
-                    currentDate = state.selectedDate;
-                    document.getElementById('date-picker').value = state.selectedDate;
-                }
-                
-                if (state.autoRefreshEnabled) {
-                    document.getElementById('auto-refresh-toggle').checked = true;
-                    document.getElementById('refresh-interval').disabled = false;
-                }
-                
-                if (state.refreshInterval) {
-                    document.getElementById('refresh-interval').value = state.refreshInterval;
-                }
-                
-                if (state.activeTab === 'client') {
-                    setTimeout(() => {
-                        switchTab('client');
-                        if (state.selectedClient) {
-                            document.getElementById('client-dropdown').value = state.selectedClient;
-                            loadClientData();
-                        }
-                    }, 500);
-                } else if (state.activeTab === 'range') {
-                    setTimeout(() => {
-                        switchTab('range');
-                        if (state.rangeStartDate) {
-                            document.getElementById('range-start-date').value = state.rangeStartDate;
-                        }
-                        if (state.rangeEndDate) {
-                            document.getElementById('range-end-date').value = state.rangeEndDate;
-                        }
-                        if (state.selectedClients && Array.isArray(state.selectedClients)) {
-                            selectedClients = new Set(state.selectedClients);
-                            updateSelectedClientsText();
-                        }
-                    }, 500);
-                }
-                
-                if (state.autoRefreshEnabled && state.refreshInterval) {
-                    const interval = parseInt(state.refreshInterval);
-                    if (!isNaN(interval)) {
-                        startAutoRefresh(interval);
-                    }
-                }
-                
-            } catch (e) {
-                console.error('Error restoring state:', e);
-                localStorage.removeItem('dashboardState');
-            }
-        }
     </script>
 </body>
 </html>
