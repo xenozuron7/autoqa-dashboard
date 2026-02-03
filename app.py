@@ -1440,29 +1440,39 @@ async def get_clients(request: Request):
 @require_db
 @rate_limit
 async def get_client_data(request: Request, client_id: str):
-    """Get detailed data for a specific client (past 7 days)"""
+    """Get detailed data for a specific client for the last 7 ACTIVE days."""
     try:
-        cache_key = f"client:{client_id}:7days"
+        cache_key = f"client:{client_id}:last7active"
         cached = await get_cache(cache_key, "client_detail")
         if cached:
             return JSONResponse(content=cached)
 
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
+        start_date = end_date - timedelta(days=60)
 
         match_conditions = {
             "client_id": client_id,
             "created_at": {"$gte": start_date, "$lte": end_date}
         }
 
-        daily_data = await streaming_aggregate_by_date_status(match_conditions, start_date, 7)
+        daily_data = await streaming_aggregate_by_date_status(match_conditions, start_date, 60)
+
+        active_dates = []
+        for date_str in sorted(daily_data.keys()):
+            ds = daily_data[date_str]
+            total = ds.get('completed', 0) + ds.get('processing', 0) + ds.get('failed', 0) + ds.get('callback', 0)
+            if total > 0:
+                active_dates.append(date_str)
+
+        last7 = active_dates[-7:]
 
         stats = {"completed": 0, "processing": 0, "failed": 0, "callback": 0}
         daily_charts = {"completed": {}, "processing": {}, "failed": {}, "callback": {}}
 
-        for date_str, date_stats in daily_data.items():
-            for status in ["completed", "processing", "failed", "callback"]:
-                count = date_stats.get(status, 0)
+        for date_str in last7:
+            ds = daily_data.get(date_str, init_stats_dict())
+            for status in ("completed", "processing", "failed", "callback"):
+                count = int(ds.get(status, 0))
                 stats[status] += count
                 daily_charts[status][date_str] = count
 

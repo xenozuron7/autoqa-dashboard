@@ -324,7 +324,7 @@
                             <h3 class="chart-title">Client Breakdown</h3>
                         </div>
                         <div class="chart-canvas-wrapper">
-                            <canvas id="rangeClientChart"></canvas>
+                            <div id="rangeClientCards" class="client-breakdown-grid"></div>
                         </div>
                     </div>
                 </div>
@@ -521,10 +521,90 @@
         let selectedClients = new Set();
         let allClients = [];
 
+
+        // SAVE STATE (localStorage)
+        const DASH_STATE_KEY = 'autoqa_dashboard_state_v1';
+
+        function readDashboardState() {
+            try {
+                const raw = localStorage.getItem(DASH_STATE_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function writeDashboardState(patch) {
+            try {
+                const cur = readDashboardState() || {};
+                const next = { ...cur, ...patch, updatedAt: new Date().toISOString() };
+                localStorage.setItem(DASH_STATE_KEY, JSON.stringify(next));
+            } catch (e) {}
+        }
+
+        function getActiveTabName() {
+            const active = document.querySelector('.tab-content.active');
+            if (!active || !active.id) return 'overview';
+            return active.id.replace('-tab', '');
+        }
+
+        function persistCurrentState() {
+            const selectedClientId = document.getElementById('client-id-select')?.value || '';
+            const state = {
+                activeTab: getActiveTabName(),
+                overviewDate: document.getElementById('overview-date')?.value || '',
+                rangeStart: document.getElementById('range-start-date')?.value || '',
+                rangeEnd: document.getElementById('range-end-date')?.value || '',
+                tokenStart: document.getElementById('token-start-date')?.value || '',
+                tokenEnd: document.getElementById('token-end-date')?.value || '',
+                tokenClient: document.getElementById('token-client-select')?.value || 'all',
+                autoRefreshEnabled: document.getElementById('auto-refresh-toggle')?.checked || false,
+                refreshInterval: document.getElementById('refresh-interval')?.value || '30',
+                selectedClientId: selectedClientId,
+                selectedClients: Array.from(selectedClients || []),
+                rangeAnalyzedOnce: true
+            };
+            writeDashboardState(state);
+        }
+
+        function applySavedState() {
+            const state = readDashboardState();
+            if (!state) return;
+
+            if (state.overviewDate) document.getElementById('overview-date').value = state.overviewDate;
+            if (state.rangeStart) document.getElementById('range-start-date').value = state.rangeStart;
+            if (state.rangeEnd) document.getElementById('range-end-date').value = state.rangeEnd;
+            if (state.tokenStart) document.getElementById('token-start-date').value = state.tokenStart;
+            if (state.tokenEnd) document.getElementById('token-end-date').value = state.tokenEnd;
+            if (state.refreshInterval) document.getElementById('refresh-interval').value = state.refreshInterval;
+            if (typeof state.autoRefreshEnabled === 'boolean') {
+                document.getElementById('auto-refresh-toggle').checked = state.autoRefreshEnabled;
+                document.getElementById('refresh-interval').disabled = !state.autoRefreshEnabled;
+            }
+
+            // Restore selected clients for date range (checkboxes populated later)
+            if (Array.isArray(state.selectedClients)) {
+                selectedClients = new Set(state.selectedClients);
+            }
+
+            // Restore token client once list is loaded
+            if (state.tokenClient) {
+                const sel = document.getElementById('token-client-select');
+                if (sel) sel.dataset.restoreValue = state.tokenClient;
+            }
+
+            // Restore client dashboard selection once list is loaded
+            if (state.selectedClientId) {
+                const sel = document.getElementById('client-id-select');
+                if (sel) sel.dataset.restoreValue = state.selectedClientId;
+            }
+        }
+
         // ============================================================================
         // TAB SWITCHING
         // ============================================================================
         function switchTab(tabName) {
+            writeDashboardState({ activeTab: tabName });
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -544,6 +624,31 @@
             // Load data for specific tabs
             if (tabName === 'overview') {
                 loadOverviewData();
+            // Apply saved state (dates, toggles, selections)
+            applySavedState();
+            const st = readDashboardState();
+            if (st && st.activeTab) {
+                const btn = document.querySelector(`.tab-btn[onclick="switchTab('${'${st.activeTab}'}')"]`);
+                // Call switchTab using a synthetic event target if needed
+                try {
+                    // emulate click to preserve existing behavior
+                    const buttons = document.querySelectorAll('.tab-btn');
+                    buttons.forEach(b => {
+                        if (b.getAttribute('onclick') === `switchTab('${'${st.activeTab}'}')`) b.click();
+                    });
+                } catch (e) {}
+            }
+
+            // Persist on changes
+            ['overview-date','range-start-date','range-end-date','token-start-date','token-end-date'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('change', persistCurrentState);
+            });
+            const ar = document.getElementById('auto-refresh-toggle');
+            if (ar) ar.addEventListener('change', persistCurrentState);
+            const ri = document.getElementById('refresh-interval');
+            if (ri) ri.addEventListener('input', persistCurrentState);
+
             } else if (tabName === 'client') {
                 loadClientList();
             } else if (tabName === 'date-range') {
@@ -778,6 +883,8 @@
                 createClientChart('clientFailedChart', 'Failed', data.daily.failed || {}, '#dc2626');
                 createClientChart('clientCallbackChart', 'Callback', data.daily.callback || {}, '#8b5cf6');
 
+            persistCurrentState();
+
             } catch (error) {
                 console.error('Error loading client data:', error);
                 showToast('Error loading client data', 'error');
@@ -799,17 +906,15 @@
             const suggestedMax = Math.ceil(maxValue * 1.1);
 
             charts[canvasId.replace('Chart', '')] = new Chart(ctx, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
                         label: label,
                         data: data,
-                        backgroundColor: color + '33',
+                        backgroundColor: color + 'CC',
                         borderColor: color,
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4
+                        borderWidth: 2, borderRadius: 8, barPercentage: 0.7, categoryPercentage: 0.8
                     }]
                 },
                 options: {
@@ -895,12 +1000,15 @@
         }
 
         function updateSelectedClients() {
+            // persist selection
+
             selectedClients.clear();
             const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]:checked');
             checkboxes.forEach(cb => selectedClients.add(cb.value));
 
             const text = selectedClients.size === 0 ? 'All Clients' : `${selectedClients.size} client(s) selected`;
             document.getElementById('client-selected-text').textContent = text;
+            persistCurrentState();
         }
 
         function selectAllClients() {
@@ -980,10 +1088,43 @@
 
         function createRangeTrendChart(dailyData) {
             const ctx = document.getElementById('rangeTrendChart');
+            if (charts.rangeTrend) charts.rangeTrend.destroy();
 
-            if (charts.rangeTrend) {
-                charts.rangeTrend.destroy();
-            }
+            const allVals = [
+                ...(dailyData.completed || []),
+                ...(dailyData.processing || []),
+                ...(dailyData.failed || []),
+                ...(dailyData.callback || [])
+            ];
+            const maxValue = Math.max(...allVals, 1);
+            const suggestedMax = Math.ceil(maxValue * 1.1);
+
+            charts.rangeTrend = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dailyData.dates,
+                    datasets: [
+                        { label: 'Completed', data: dailyData.completed, backgroundColor: '#10b981CC', borderColor: '#10b981', borderWidth: 2, borderRadius: 8 },
+                        { label: 'Processing', data: dailyData.processing, backgroundColor: '#f59e0bCC', borderColor: '#f59e0b', borderWidth: 2, borderRadius: 8 },
+                        { label: 'Failed', data: dailyData.failed, backgroundColor: '#dc2626CC', borderColor: '#dc2626', borderWidth: 2, borderRadius: 8 },
+                        { label: 'Callback', data: dailyData.callback, backgroundColor: '#8b5cf6CC', borderColor: '#8b5cf6', borderWidth: 2, borderRadius: 8 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'top', labels: { font: { size: 14, weight: 600 }, padding: 15, usePointStyle: true } },
+                        tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.8)', padding: 12, titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 13 }, cornerRadius: 8 }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, suggestedMax: suggestedMax, grace: '10%', ticks: { font: { size: 12, weight: 600 }, precision: 0 }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                        x: { ticks: { font: { size: 12, weight: 600 } }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
 
             charts.rangeTrend = new Chart(ctx, {
                 type: 'line',
@@ -1065,14 +1206,42 @@
                     }
                 }
             });
-        }
+        
 
         function createRangeClientChart(clientData) {
-            const ctx = document.getElementById('rangeClientChart');
-
             if (charts.rangeClient) {
                 charts.rangeClient.destroy();
+                charts.rangeClient = null;
             }
+
+            const container = document.getElementById('rangeClientCards');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const clients = Object.keys(clientData || {});
+            clients.sort((a, b) => (clientData[b]?.total || 0) - (clientData[a]?.total || 0));
+            const topClients = clients.slice(0, 10);
+
+            topClients.forEach((clientId) => {
+                const d = clientData[clientId] || {};
+                const card = document.createElement('div');
+                card.className = 'client-card';
+
+                card.innerHTML = `
+                    <div class="client-card-header">${clientId}</div>
+                    <div class="client-card-stats">
+                        <div class="client-stat-row"><span class="client-stat-label">Total</span><span class="client-stat-value">${(d.total || 0).toLocaleString()}</span></div>
+                        <div class="client-stat-row"><span class="client-stat-label">Completed</span><span class="client-stat-value completed">${(d.completed || 0).toLocaleString()}</span></div>
+                        <div class="client-stat-row"><span class="client-stat-label">Processing</span><span class="client-stat-value processing">${(d.processing || 0).toLocaleString()}</span></div>
+                        <div class="client-stat-row"><span class="client-stat-label">Failed</span><span class="client-stat-value failed">${(d.failed || 0).toLocaleString()}</span></div>
+                        <div class="client-stat-row"><span class="client-stat-label">Callback</span><span class="client-stat-value callback">${(d.callback || 0).toLocaleString()}</span></div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
 
             const clients = Object.keys(clientData).slice(0, 10);
             const totals = clients.map(client => clientData[client].total);
@@ -1133,7 +1302,7 @@
                     }
                 }
             });
-        }
+        
 
         // ============================================================================
         // TOKEN ANALYTICS FUNCTIONS
