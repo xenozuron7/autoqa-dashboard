@@ -1,264 +1,342 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Auto QA Analytics Dashboard - Real-time ticket monitoring">
+    <meta name="theme-color" content="#030712">
     <title>Auto QA Analytics Dashboard</title>
+
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;550;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
+
 <body>
-    <div class="bg-pattern"></div>
+    <!-- Ambient Background with Floating Orbs -->
+    <div class="ambient-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
 
-    <div class="dashboard-container">
-        <!-- Header -->
-        <div class="dashboard-header">
-            <div class="header-content">
-                <div class="header-icon">📊</div>
-                <div class="header-text">
-                    <h1>Auto QA Analytics Dashboard</h1>
-                    <p>Real-time ticket monitoring and analysis</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab Navigation -->
-        <div class="tab-navigation">
-            <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
-            <button class="tab-btn" onclick="switchTab('client')">👤 Client Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('date-range')">📅 Date Range Analysis</button>
-            <button class="tab-btn" onclick="switchTab('token-analytics')">🎯 Token Analytics</button>
-        </div>
-
-        <!-- Overview Tab -->
-        <div id="overview-tab" class="tab-content active">
-            <!-- Control Panel -->
-            <div class="control-panel">
-                <div class="control-strip">
-                    <div class="control-group">
-                        <label class="control-label">Select Date</label>
-                        <input type="date" id="overview-date" class="date-input">
-                    </div>
-
-                    <div class="refresh-toggle">
-                        <label>
-                            <input type="checkbox" id="auto-refresh-toggle" class="checkbox-custom">
-                            <span>Auto Refresh</span>
-                        </label>
-                        <span style="color: #6b7280; font-weight: 600;">Every</span>
-                        <input type="number" id="refresh-interval" class="refresh-input" value="30" min="5" max="300" disabled>
-                        <span style="color: #6b7280; font-weight: 600;">sec</span>
-                    </div>
-
-                    <button class="btn btn-secondary" onclick="manualReload()">
-                        <span>🔄</span>
-                        Reload
-                    </button>
-                </div>
-            </div>
-
-            <!-- Date Banner -->
-            <div class="date-banner" id="overview-date-banner">
-                <div class="date-banner-icon">📅</div>
-                <div class="date-banner-text" id="overview-date-text">Loading...</div>
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-                <div class="stat-card completed" onclick="openTicketModal('completed')">
-                    <div class="stat-icon">✅</div>
-                    <div class="stat-label">Completed Tickets</div>
-                    <div class="stat-value" id="completed-count">0</div>
-                    <div class="stat-subtitle">Successfully resolved</div>
-                </div>
-
-                <div class="stat-card processing" onclick="openTicketModal('processing')">
-                    <div class="stat-icon">⚙️</div>
-                    <div class="stat-label">Processing Tickets</div>
-                    <div class="stat-value" id="processing-count">0</div>
-                    <div class="stat-subtitle">Currently in progress</div>
-                </div>
-
-                <div class="stat-card failed" onclick="openTicketModal('failed')">
-                    <div class="stat-icon">❌</div>
-                    <div class="stat-label">Failed Tickets</div>
-                    <div class="stat-value" id="failed-count">0</div>
-                    <div class="stat-subtitle">Requires attention</div>
-                </div>
-
-                <div class="stat-card callback" onclick="openTicketModal('callback')">
-                    <div class="stat-icon">📞</div>
-                    <div class="stat-label">Callback Required</div>
-                    <div class="stat-value" id="callback-count">0</div>
-                    <div class="stat-subtitle">Awaiting callback</div>
-                </div>
-            </div>
-
-            <!-- No Data Message -->
-            <div id="overview-no-data" class="no-data" style="display: none;">
-                <div class="no-data-icon">📭</div>
-                <div class="no-data-text">No data available for the selected date</div>
-            </div>
-
-            <!-- Charts Section -->
-            <div class="charts-section" id="overview-charts" style="display: none;">
-                <div class="chart-card completed">
-                    <div class="chart-header">
-                        <div class="chart-icon">✅</div>
-                        <h3 class="chart-title">Completed Tickets</h3>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="completedChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-card processing">
-                    <div class="chart-header">
-                        <div class="chart-icon">⚙️</div>
-                        <h3 class="chart-title">Processing Tickets</h3>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="processingChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-card failed">
-                    <div class="chart-header">
-                        <div class="chart-icon">❌</div>
-                        <h3 class="chart-title">Failed Tickets</h3>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="failedChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-card callback">
-                    <div class="chart-header">
-                        <div class="chart-icon">📞</div>
-                        <h3 class="chart-title">Callback Required</h3>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="callbackChart"></canvas>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">📊</div>
+                    <div class="logo-text">
+                        <span class="logo-title">AutoQA</span>
+                        <span class="logo-subtitle">Analytics</span>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Client Dashboard Tab -->
-        <div id="client-tab" class="tab-content">
-            <div class="client-selector">
-                <label for="client-id-select">Select Client ID:</label>
-                <select id="client-id-select" onchange="loadClientData()">
-                    <option value="">-- Select a Client --</option>
-                </select>
+            <nav class="nav-menu">
+                <button class="nav-item active" onclick="switchTab('overview')">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Overview</span>
+                </button>
+                <button class="nav-item" onclick="switchTab('client')">
+                    <span class="nav-icon">👤</span>
+                    <span class="nav-label">Clients</span>
+                </button>
+                <button class="nav-item" onclick="switchTab('date-range')">
+                    <span class="nav-icon">📅</span>
+                    <span class="nav-label">Date Range</span>
+                </button>
+                <button class="nav-item" onclick="switchTab('token-analytics')">
+                    <span class="nav-icon">🎯</span>
+                    <span class="nav-label">Tokens</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="refresh-controls">
+                    <label class="toggle-wrap">
+                        <input type="checkbox" id="auto-refresh-toggle">
+                        <span class="toggle-label">Auto Refresh</span>
+                    </label>
+                    <div class="interval-input">
+                        <input type="number" id="refresh-interval" value="30" min="5" max="300" disabled>
+                        <span>sec</span>
+                    </div>
+                </div>
             </div>
+        </aside>
 
-            <div id="client-data-container" style="display: none;">
-                <!-- Stats Grid -->
-                <div class="stats-grid">
-                    <div class="stat-card completed">
-                        <div class="stat-icon">✅</div>
-                        <div class="stat-label">Completed Tickets (Past 7 Days)</div>
-                        <div class="stat-value" id="client-completed-count">0</div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Overview Tab -->
+            <section id="overview-tab" class="tab-panel active">
+                <header class="page-header">
+                    <div class="header-left">
+                        <h1 class="page-title">Dashboard Overview</h1>
+                        <p class="page-subtitle">Real-time ticket monitoring and analysis</p>
+                    </div>
+                    <div class="header-controls">
+                        <input type="date" id="overview-date" class="input-field">
+                        <button class="btn-icon" onclick="manualReload()" title="Reload">
+                            <span>🔄</span>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Date Display -->
+                <div class="date-display" id="overview-date-banner">
+                    <span class="date-icon">📅</span>
+                    <span class="date-text" id="overview-date-text">Loading...</span>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-row">
+                    <div class="stat-card completed" onclick="openTicketModal('completed')">
+                        <div class="stat-header">
+                            <span class="stat-icon">✅</span>
+                            <span class="stat-trend" id="completed-trend"></span>
+                        </div>
+                        <div class="stat-value" id="completed-count">0</div>
+                        <div class="stat-label">Completed</div>
                     </div>
 
-                    <div class="stat-card processing">
-                        <div class="stat-icon">⚙️</div>
-                        <div class="stat-label">Processing Tickets (Past 7 Days)</div>
-                        <div class="stat-value" id="client-processing-count">0</div>
+                    <div class="stat-card processing" onclick="openTicketModal('processing')">
+                        <div class="stat-header">
+                            <span class="stat-icon">⚙️</span>
+                            <span class="stat-trend" id="processing-trend"></span>
+                        </div>
+                        <div class="stat-value" id="processing-count">0</div>
+                        <div class="stat-label">Processing</div>
                     </div>
 
-                    <div class="stat-card failed">
-                        <div class="stat-icon">❌</div>
-                        <div class="stat-label">Failed Tickets (Past 7 Days)</div>
-                        <div class="stat-value" id="client-failed-count">0</div>
+                    <div class="stat-card failed" onclick="openTicketModal('failed')">
+                        <div class="stat-header">
+                            <span class="stat-icon">❌</span>
+                            <span class="stat-trend" id="failed-trend"></span>
+                        </div>
+                        <div class="stat-value" id="failed-count">0</div>
+                        <div class="stat-label">Failed</div>
                     </div>
 
-                    <div class="stat-card callback">
-                        <div class="stat-icon">📞</div>
-                        <div class="stat-label">Callback Required (Past 7 Days)</div>
-                        <div class="stat-value" id="client-callback-count">0</div>
+                    <div class="stat-card callback" onclick="openTicketModal('callback')">
+                        <div class="stat-header">
+                            <span class="stat-icon">📞</span>
+                            <span class="stat-trend" id="callback-trend"></span>
+                        </div>
+                        <div class="stat-value" id="callback-count">0</div>
+                        <div class="stat-label">Callback</div>
                     </div>
                 </div>
 
-                <!-- Charts -->
-                <div class="charts-section">
-                    <div class="chart-card completed">
+                <!-- No Data Message -->
+                <div id="overview-no-data" class="empty-state" style="display: none;">
+                    <div class="empty-icon">📭</div>
+                    <div class="empty-title">No data available</div>
+                    <div class="empty-text">Select a different date to view ticket data</div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div id="overview-charts" class="charts-grid" style="display: none;">
+                    <div class="chart-card">
                         <div class="chart-header">
-                            <div class="chart-icon">✅</div>
-                            <h3 class="chart-title">Completed Tickets (Past 7 Days)</h3>
+                            <div class="chart-title">
+                                <span class="chart-dot completed"></span>
+                                Completed Tickets
+                            </div>
                         </div>
-                        <div class="chart-canvas-wrapper">
-                            <canvas id="clientCompletedChart"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="chart-card processing">
-                        <div class="chart-header">
-                            <div class="chart-icon">⚙️</div>
-                            <h3 class="chart-title">Processing Tickets (Past 7 Days)</h3>
-                        </div>
-                        <div class="chart-canvas-wrapper">
-                            <canvas id="clientProcessingChart"></canvas>
+                        <div class="chart-body">
+                            <canvas id="completedChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-card failed">
+                    <div class="chart-card">
                         <div class="chart-header">
-                            <div class="chart-icon">❌</div>
-                            <h3 class="chart-title">Failed Tickets (Past 7 Days)</h3>
+                            <div class="chart-title">
+                                <span class="chart-dot processing"></span>
+                                Processing Tickets
+                            </div>
                         </div>
-                        <div class="chart-canvas-wrapper">
-                            <canvas id="clientFailedChart"></canvas>
+                        <div class="chart-body">
+                            <canvas id="processingChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-card callback">
+                    <div class="chart-card">
                         <div class="chart-header">
-                            <div class="chart-icon">📞</div>
-                            <h3 class="chart-title">Callback Required (Past 7 Days)</h3>
+                            <div class="chart-title">
+                                <span class="chart-dot failed"></span>
+                                Failed Tickets
+                            </div>
                         </div>
-                        <div class="chart-canvas-wrapper">
-                            <canvas id="clientCallbackChart"></canvas>
+                        <div class="chart-body">
+                            <canvas id="failedChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-title">
+                                <span class="chart-dot callback"></span>
+                                Callback Required
+                            </div>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="callbackChart"></canvas>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div id="client-no-data" class="no-data">
-                <div class="no-data-icon">👤</div>
-                <div class="no-data-text">No tickets found for this client</div>
-            </div>
-        </div>
+            <!-- Client Tab -->
+            <section id="client-tab" class="tab-panel">
+                <header class="page-header">
+                    <div class="header-left">
+                        <h1 class="page-title">Client Dashboard</h1>
+                        <p class="page-subtitle">View individual client performance</p>
+                    </div>
+                </header>
 
-        <!-- Date Range Analysis Tab -->
-        <div id="date-range-tab" class="tab-content">
-            <div class="control-panel">
-                <div class="control-strip">
-                    <div class="control-group">
-                        <label class="control-label">Start Date</label>
-                        <input type="date" id="range-start-date" class="date-input">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label class="filter-label">Select Client</label>
+                        <select id="client-id-select" class="input-field" onchange="loadClientData()">
+                            <option value="">-- Select a Client --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="client-data-container" style="display: none;">
+                    <div class="stats-row">
+                        <div class="stat-card completed">
+                            <div class="stat-header">
+                                <span class="stat-icon">✅</span>
+                            </div>
+                            <div class="stat-value" id="client-completed-count">0</div>
+                            <div class="stat-label">Completed (7 Days)</div>
+                        </div>
+
+                        <div class="stat-card processing">
+                            <div class="stat-header">
+                                <span class="stat-icon">⚙️</span>
+                            </div>
+                            <div class="stat-value" id="client-processing-count">0</div>
+                            <div class="stat-label">Processing (7 Days)</div>
+                        </div>
+
+                        <div class="stat-card failed">
+                            <div class="stat-header">
+                                <span class="stat-icon">❌</span>
+                            </div>
+                            <div class="stat-value" id="client-failed-count">0</div>
+                            <div class="stat-label">Failed (7 Days)</div>
+                        </div>
+
+                        <div class="stat-card callback">
+                            <div class="stat-header">
+                                <span class="stat-icon">📞</span>
+                            </div>
+                            <div class="stat-value" id="client-callback-count">0</div>
+                            <div class="stat-label">Callback (7 Days)</div>
+                        </div>
                     </div>
 
-                    <div class="control-group">
-                        <label class="control-label">End Date</label>
-                        <input type="date" id="range-end-date" class="date-input">
-                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <div class="chart-title">
+                                    <span class="chart-dot completed"></span>
+                                    Completed (7 Days)
+                                </div>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="clientCompletedChart"></canvas>
+                            </div>
+                        </div>
 
-                    <div class="control-group">
-                        <label class="control-label">Filter by Clients (Optional)</label>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <div class="chart-title">
+                                    <span class="chart-dot processing"></span>
+                                    Processing (7 Days)
+                                </div>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="clientProcessingChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <div class="chart-title">
+                                    <span class="chart-dot failed"></span>
+                                    Failed (7 Days)
+                                </div>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="clientFailedChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <div class="chart-title">
+                                    <span class="chart-dot callback"></span>
+                                    Callback (7 Days)
+                                </div>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="clientCallbackChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="client-no-data" class="empty-state">
+                    <div class="empty-icon">👤</div>
+                    <div class="empty-title">Select a client</div>
+                    <div class="empty-text">Choose a client from the dropdown to view their data</div>
+                </div>
+            </section>
+
+            <!-- Date Range Tab -->
+            <section id="date-range-tab" class="tab-panel">
+                <header class="page-header">
+                    <div class="header-left">
+                        <h1 class="page-title">Date Range Analysis</h1>
+                        <p class="page-subtitle">Analyze ticket trends over time</p>
+                    </div>
+                </header>
+
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label class="filter-label">Start Date</label>
+                        <input type="date" id="range-start-date" class="input-field">
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">End Date</label>
+                        <input type="date" id="range-end-date" class="input-field">
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Filter Clients</label>
                         <div class="multi-select-wrapper">
-                            <div class="multi-select-trigger" id="client-multi-select-trigger" onclick="toggleClientDropdown()">
+                            <div class="multi-select-trigger" id="client-multi-select-trigger"
+                                onclick="toggleClientDropdown()">
                                 <span id="client-selected-text">All Clients</span>
                                 <span class="dropdown-arrow">▼</span>
                             </div>
                             <div class="multi-select-dropdown" id="client-dropdown" style="display: none;">
                                 <div class="multi-select-search">
-                                    <input type="text" id="client-search" placeholder="Search clients..." oninput="filterClients()">
+                                    <input type="text" id="client-search" placeholder="Search clients..."
+                                        oninput="filterClients()">
                                 </div>
-                                <div class="multi-select-options" id="client-options">
-                                    <!-- Dynamically populated -->
-                                </div>
+                                <div class="multi-select-options" id="client-options"></div>
                                 <div class="multi-select-actions">
                                     <button class="btn-small" onclick="selectAllClients()">Select All</button>
                                     <button class="btn-small" onclick="clearAllClients()">Clear All</button>
@@ -266,174 +344,136 @@
                             </div>
                         </div>
                     </div>
-
-                    <button class="btn btn-primary" onclick="analyzeRange()">
-                        <span>📊</span>
-                        Analyze
+                    <button class="btn-primary" onclick="analyzeRange()">
+                        <span>📊</span> Analyze
                     </button>
                 </div>
-            </div>
 
-            <div id="range-results" style="display: none;">
-                <!-- Stats Grid -->
-                <div class="stats-grid" style="margin-top: 25px;">
-                    <div class="stat-card completed">
-                        <div class="stat-icon">✅</div>
-                        <div class="stat-label">Total Completed Tickets</div>
-                        <div class="stat-value" id="range-completed">0</div>
-                        <div class="stat-subtitle">In selected range</div>
-                    </div>
-
-                    <div class="stat-card processing">
-                        <div class="stat-icon">⚙️</div>
-                        <div class="stat-label">Total Processing Tickets</div>
-                        <div class="stat-value" id="range-processing">0</div>
-                        <div class="stat-subtitle">In selected range</div>
-                    </div>
-
-                    <div class="stat-card failed">
-                        <div class="stat-icon">❌</div>
-                        <div class="stat-label">Total Failed Tickets</div>
-                        <div class="stat-value" id="range-failed">0</div>
-                        <div class="stat-subtitle">In selected range</div>
-                    </div>
-
-                    <div class="stat-card callback">
-                        <div class="stat-icon">📞</div>
-                        <div class="stat-label">Total Callback Required</div>
-                        <div class="stat-value" id="range-callback">0</div>
-                        <div class="stat-subtitle">In selected range</div>
-                    </div>
-                </div>
-
-                <!-- Charts -->
-                <div class="charts-section" style="margin-top: 25px;">
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <div class="chart-icon" style="background: #dbeafe; color: #1e40af;">📈</div>
-                            <h3 class="chart-title">Daily Ticket Trend (All Statuses)</h3>
+                <div id="range-results" style="display: none;">
+                    <div class="stats-row">
+                        <div class="stat-card completed">
+                            <div class="stat-header"><span class="stat-icon">✅</span></div>
+                            <div class="stat-value" id="range-completed">0</div>
+                            <div class="stat-label">Total Completed</div>
                         </div>
-                        <div class="chart-canvas-wrapper">
+                        <div class="stat-card processing">
+                            <div class="stat-header"><span class="stat-icon">⚙️</span></div>
+                            <div class="stat-value" id="range-processing">0</div>
+                            <div class="stat-label">Total Processing</div>
+                        </div>
+                        <div class="stat-card failed">
+                            <div class="stat-header"><span class="stat-icon">❌</span></div>
+                            <div class="stat-value" id="range-failed">0</div>
+                            <div class="stat-label">Total Failed</div>
+                        </div>
+                        <div class="stat-card callback">
+                            <div class="stat-header"><span class="stat-icon">📞</span></div>
+                            <div class="stat-value" id="range-callback">0</div>
+                            <div class="stat-label">Total Callback</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card full-width">
+                        <div class="chart-header">
+                            <div class="chart-title">📈 Daily Ticket Trend</div>
+                        </div>
+                        <div class="chart-body large">
                             <canvas id="rangeTrendChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <div class="chart-icon" style="background: #fef3c7; color: #92400e;">👥</div>
-                            <h3 class="chart-title">Client Breakdown</h3>
-                        </div>
-                        <div class="chart-canvas-wrapper">
-                            <div id="rangeClientCards" class="client-breakdown-grid"></div>
-                        </div>
-                    </div>
+                    <div class="section-title">Client Breakdown</div>
+                    <div class="client-grid" id="rangeClientCards"></div>
                 </div>
-            </div>
 
-            <div id="range-no-data" class="no-data">
-                <div class="no-data-icon">📅</div>
-                <div class="no-data-text">Select a date range to analyze ticket data</div>
-            </div>
-        </div>
+                <div id="range-no-data" class="empty-state">
+                    <div class="empty-icon">📅</div>
+                    <div class="empty-title">Select date range</div>
+                    <div class="empty-text">Choose start and end dates to analyze ticket data</div>
+                </div>
+            </section>
 
-        <!-- Token Analytics Tab -->
-        <div id="token-analytics-tab" class="tab-content">
-            <div class="control-panel">
-                <div class="control-strip">
-                    <div class="control-group">
-                        <label class="control-label">Start Date</label>
-                        <input type="date" id="token-start-date" class="date-input">
+            <!-- Token Analytics Tab -->
+            <section id="token-analytics-tab" class="tab-panel">
+                <header class="page-header">
+                    <div class="header-left">
+                        <h1 class="page-title">Token Analytics</h1>
+                        <p class="page-subtitle">Track API usage and costs</p>
                     </div>
+                </header>
 
-                    <div class="control-group">
-                        <label class="control-label">End Date</label>
-                        <input type="date" id="token-end-date" class="date-input">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label class="filter-label">Start Date</label>
+                        <input type="date" id="token-start-date" class="input-field">
                     </div>
-
-                    <div class="control-group">
-                        <label class="control-label">Client ID</label>
-                        <select id="token-client-select" class="date-input" style="min-width: 200px;">
+                    <div class="filter-group">
+                        <label class="filter-label">End Date</label>
+                        <input type="date" id="token-end-date" class="input-field">
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Client</label>
+                        <select id="token-client-select" class="input-field">
                             <option value="all">All Clients</option>
                         </select>
                     </div>
-
-                    <button class="btn btn-primary" onclick="analyzeTokens()">
-                        <span>📊</span>
-                        Analyze
+                    <button class="btn-primary" onclick="analyzeTokens()">
+                        <span>📊</span> Analyze
                     </button>
                 </div>
-            </div>
 
-            <div id="token-results" style="display: none;">
-                <!-- Stats Cards -->
-                <div class="stats-grid" style="margin-top: 25px;">
-                    <div class="stat-card" style="border-left-color: #3b82f6;">
-                        <div class="stat-icon" style="background: #dbeafe; color: #1e40af;">
-                            🎯
+                <div id="token-results" style="display: none;">
+                    <div class="stats-row">
+                        <div class="stat-card blue">
+                            <div class="stat-header"><span class="stat-icon">🎯</span></div>
+                            <div class="stat-value" id="token-total-tokens">0</div>
+                            <div class="stat-label">Total Tokens</div>
                         </div>
-                        <div class="stat-label">Total Tokens</div>
-                        <div class="stat-value" id="token-total-tokens">0</div>
-                        <div class="stat-subtitle">All models combined</div>
+                        <div class="stat-card green">
+                            <div class="stat-header"><span class="stat-icon">💰</span></div>
+                            <div class="stat-value" id="token-total-cost">$0.00</div>
+                            <div class="stat-label">Total Cost</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="stat-header"><span class="stat-icon">📝</span></div>
+                            <div class="stat-value" id="token-requests">0</div>
+                            <div class="stat-label">API Requests</div>
+                        </div>
+                        <div class="stat-card purple">
+                            <div class="stat-header"><span class="stat-icon">🤖</span></div>
+                            <div class="stat-value" id="token-models">0</div>
+                            <div class="stat-label">Models Used</div>
+                        </div>
                     </div>
 
-                    <div class="stat-card" style="border-left-color: #10b981;">
-                        <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
-                            💰
+                    <div class="chart-card full-width">
+                        <div class="chart-header">
+                            <div class="chart-title">📊 Token Usage by Model</div>
                         </div>
-                        <div class="stat-label">Total Cost</div>
-                        <div class="stat-value" id="token-total-cost">$0.00</div>
-                        <div class="stat-subtitle">Estimated spending</div>
-                    </div>
-
-                    <div class="stat-card" style="border-left-color: #f59e0b;">
-                        <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
-                            📝
+                        <div class="chart-body large">
+                            <canvas id="tokenChart"></canvas>
                         </div>
-                        <div class="stat-label">API Requests</div>
-                        <div class="stat-value" id="token-requests">0</div>
-                        <div class="stat-subtitle">Total API calls</div>
-                    </div>
-
-                    <div class="stat-card" style="border-left-color: #8b5cf6;">
-                        <div class="stat-icon" style="background: #ede9fe; color: #5b21b6;">
-                            🤖
-                        </div>
-                        <div class="stat-label">Models Used</div>
-                        <div class="stat-value" id="token-models">0</div>
-                        <div class="stat-subtitle">Different models</div>
                     </div>
                 </div>
 
-                <!-- Chart -->
-                <div class="chart-card" style="margin-top: 25px;">
-                    <div class="chart-header">
-                        <div class="chart-icon" style="background: #dbeafe; color: #1e40af;">
-                            📊
-                        </div>
-                        <h3 class="chart-title">Token Usage by Model</h3>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="tokenChart"></canvas>
-                    </div>
+                <div id="token-no-data" class="empty-state">
+                    <div class="empty-icon">🎯</div>
+                    <div class="empty-title">Analyze token usage</div>
+                    <div class="empty-text">Select a date range and client to view token analytics</div>
                 </div>
-            </div>
-
-            <div id="token-no-data" class="no-data">
-                <div class="no-data-icon">📊</div>
-                <div class="no-data-text">Select a date range and client to view token analytics</div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 
-    <!-- Modal for Ticket Details -->
+    <!-- Modal -->
     <div id="ticketModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle">Tickets</h2>
-                <span class="modal-close" onclick="closeTicketModal()">&times;</span>
+                <button class="modal-close" onclick="closeTicketModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <table class="tickets-table" id="ticketsTable">
+                <table class="data-table" id="ticketsTable">
                     <thead>
                         <tr>
                             <th>Ticket ID</th>
@@ -444,16 +484,16 @@
                             <th>Request Status</th>
                         </tr>
                     </thead>
-                    <tbody id="ticketsTableBody">
-                        <!-- Populated dynamically -->
-                    </tbody>
+                    <tbody id="ticketsTableBody"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
     <script>
+        // ============================================================================
         // DATA LABELS PLUGIN
+        // ============================================================================
         const dataLabelsPlugin = {
             id: 'dataLabels',
             afterDatasetsDraw(chart) {
@@ -465,14 +505,14 @@
                     meta.data.forEach((point, idx) => {
                         const val = dataset.data[idx];
                         if (!val || val === 0) return;
-                        ctx.font = 'bold 13px sans-serif';
-                        ctx.fillStyle = '#1f2937';
+                        ctx.font = 'bold 11px Inter, sans-serif';
+                        ctx.fillStyle = '#94a3b8';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'bottom';
                         let txt = val.toLocaleString();
-                        if (val >= 1000000) txt = (val/1000000).toFixed(1) + 'M';
-                        else if (val >= 1000) txt = (val/1000).toFixed(1) + 'K';
-                        ctx.fillText(txt, point.x, point.y - 8);
+                        if (val >= 1000000) txt = (val / 1000000).toFixed(1) + 'M';
+                        else if (val >= 1000) txt = (val / 1000).toFixed(1) + 'K';
+                        ctx.fillText(txt, point.x, point.y - 6);
                     });
                 });
                 ctx.restore();
@@ -480,58 +520,28 @@
         };
         if (typeof Chart !== 'undefined') Chart.register(dataLabelsPlugin);
 
-        // NUMBER ANIMATION
-        function animateNumber(el, start, end, dur = 1500) {
-            if (!el || start === end) { if (el) el.textContent = end.toLocaleString(); return; }
-            const range = end - start, t0 = performance.now();
-            function update(t) {
-                const p = Math.min((t - t0) / dur, 1), ease = 1 - Math.pow(1 - p, 3);
-                el.textContent = Math.floor(start + range * ease).toLocaleString();
-                if (p < 1) requestAnimationFrame(update);
-                else el.textContent = end.toLocaleString();
-            }
-            requestAnimationFrame(update);
-        }
-
-        function updateStatWithAnimation(id, val) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            const cur = parseInt(el.textContent.replace(/,/g, '')) || 0;
-            el.classList.add('animate');
-            animateNumber(el, cur, val);
-            setTimeout(() => el.classList.remove('animate'), 1500);
-        }
-
-        // Global variables
+        // ============================================================================
+        // GLOBAL VARIABLES
+        // ============================================================================
         let charts = {
-            completed: null,
-            processing: null,
-            failed: null,
-            callback: null,
-            clientCompleted: null,
-            clientProcessing: null,
-            clientFailed: null,
-            clientCallback: null,
-            rangeTrend: null,
-            rangeClient: null,
-            token: null
+            completed: null, processing: null, failed: null, callback: null,
+            clientCompleted: null, clientProcessing: null, clientFailed: null, clientCallback: null,
+            rangeTrend: null, rangeClient: null, token: null
         };
-
         let refreshInterval = null;
         let selectedClients = new Set();
         let allClients = [];
 
-
-        // SAVE STATE (localStorage)
-        const DASH_STATE_KEY = 'autoqa_dashboard_state_v1';
+        // ============================================================================
+        // STATE PERSISTENCE
+        // ============================================================================
+        const DASH_STATE_KEY = 'autoqa_dashboard_state_v2';
 
         function readDashboardState() {
             try {
                 const raw = localStorage.getItem(DASH_STATE_KEY);
                 return raw ? JSON.parse(raw) : null;
-            } catch (e) {
-                return null;
-            }
+            } catch (e) { return null; }
         }
 
         function writeDashboardState(patch) {
@@ -539,17 +549,10 @@
                 const cur = readDashboardState() || {};
                 const next = { ...cur, ...patch, updatedAt: new Date().toISOString() };
                 localStorage.setItem(DASH_STATE_KEY, JSON.stringify(next));
-            } catch (e) {}
-        }
-
-        function getActiveTabName() {
-            const active = document.querySelector('.tab-content.active');
-            if (!active || !active.id) return 'overview';
-            return active.id.replace('-tab', '');
+            } catch (e) { }
         }
 
         function persistCurrentState() {
-            const selectedClientId = document.getElementById('client-id-select')?.value || '';
             const state = {
                 activeTab: getActiveTabName(),
                 overviewDate: document.getElementById('overview-date')?.value || '',
@@ -560,44 +563,16 @@
                 tokenClient: document.getElementById('token-client-select')?.value || 'all',
                 autoRefreshEnabled: document.getElementById('auto-refresh-toggle')?.checked || false,
                 refreshInterval: document.getElementById('refresh-interval')?.value || '30',
-                selectedClientId: selectedClientId,
-                selectedClients: Array.from(selectedClients || []),
-                rangeAnalyzedOnce: true
+                selectedClientId: document.getElementById('client-id-select')?.value || '',
+                selectedClients: Array.from(selectedClients || [])
             };
             writeDashboardState(state);
         }
 
-        function applySavedState() {
-            const state = readDashboardState();
-            if (!state) return;
-
-            if (state.overviewDate) document.getElementById('overview-date').value = state.overviewDate;
-            if (state.rangeStart) document.getElementById('range-start-date').value = state.rangeStart;
-            if (state.rangeEnd) document.getElementById('range-end-date').value = state.rangeEnd;
-            if (state.tokenStart) document.getElementById('token-start-date').value = state.tokenStart;
-            if (state.tokenEnd) document.getElementById('token-end-date').value = state.tokenEnd;
-            if (state.refreshInterval) document.getElementById('refresh-interval').value = state.refreshInterval;
-            if (typeof state.autoRefreshEnabled === 'boolean') {
-                document.getElementById('auto-refresh-toggle').checked = state.autoRefreshEnabled;
-                document.getElementById('refresh-interval').disabled = !state.autoRefreshEnabled;
-            }
-
-            // Restore selected clients for date range (checkboxes populated later)
-            if (Array.isArray(state.selectedClients)) {
-                selectedClients = new Set(state.selectedClients);
-            }
-
-            // Restore token client once list is loaded
-            if (state.tokenClient) {
-                const sel = document.getElementById('token-client-select');
-                if (sel) sel.dataset.restoreValue = state.tokenClient;
-            }
-
-            // Restore client dashboard selection once list is loaded
-            if (state.selectedClientId) {
-                const sel = document.getElementById('client-id-select');
-                if (sel) sel.dataset.restoreValue = state.selectedClientId;
-            }
+        function getActiveTabName() {
+            const active = document.querySelector('.tab-panel.active');
+            if (!active || !active.id) return 'overview';
+            return active.id.replace('-tab', '');
         }
 
         // ============================================================================
@@ -605,115 +580,66 @@
         // ============================================================================
         function switchTab(tabName) {
             writeDashboardState({ activeTab: tabName });
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
 
-            // Remove active class from all buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
+            // Save active tab to localStorage
+            localStorage.setItem('activeTab', tabName);
 
-            // Show selected tab
+            document.querySelectorAll('.tab-panel').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+
             document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.closest('.nav-item').classList.add('active');
 
-            // Add active class to clicked button
-            event.target.classList.add('active');
-
-            // Load data for specific tabs
-            if (tabName === 'overview') {
-                loadOverviewData();
-            // Apply saved state (dates, toggles, selections)
-            applySavedState();
-            const st = readDashboardState();
-            if (st && st.activeTab) {
-                const btn = document.querySelector(`.tab-btn[onclick="switchTab('${'${st.activeTab}'}')"]`);
-                // Call switchTab using a synthetic event target if needed
-                try {
-                    // emulate click to preserve existing behavior
-                    const buttons = document.querySelectorAll('.tab-btn');
-                    buttons.forEach(b => {
-                        if (b.getAttribute('onclick') === `switchTab('${'${st.activeTab}'}')`) b.click();
-                    });
-                } catch (e) {}
-            }
-
-            // Persist on changes
-            ['overview-date','range-start-date','range-end-date','token-start-date','token-end-date'].forEach((id) => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('change', persistCurrentState);
-            });
-            const ar = document.getElementById('auto-refresh-toggle');
-            if (ar) ar.addEventListener('change', persistCurrentState);
-            const ri = document.getElementById('refresh-interval');
-            if (ri) ri.addEventListener('input', persistCurrentState);
-
-            } else if (tabName === 'client') {
-                loadClientList();
-            } else if (tabName === 'date-range') {
-                loadClientListForRange();
-            } else if (tabName === 'token-analytics') {
+            if (tabName === 'overview') loadOverviewData();
+            else if (tabName === 'client') loadClientList();
+            else if (tabName === 'date-range') loadClientListForRange();
+            else if (tabName === 'token-analytics') {
                 loadTokenAnalyticsClients();
-                // Set default dates (last 7 days)
                 const endDate = new Date();
                 const startDate = new Date();
                 startDate.setDate(startDate.getDate() - 7);
-
                 document.getElementById('token-end-date').valueAsDate = endDate;
                 document.getElementById('token-start-date').valueAsDate = startDate;
             }
         }
 
         // ============================================================================
-        // OVERVIEW TAB FUNCTIONS
+        // OVERVIEW FUNCTIONS
         // ============================================================================
         async function loadOverviewData() {
             const dateInput = document.getElementById('overview-date');
             const selectedDate = dateInput.value;
-
-            if (!selectedDate) {
-                return;
-            }
+            if (!selectedDate) return;
 
             try {
                 const response = await fetch(`/api/overview?date=${selectedDate}`);
                 const data = await response.json();
 
-                // Update date banner
                 const dateObj = new Date(selectedDate);
-                const formattedDate = dateObj.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
+                const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                 });
                 document.getElementById('overview-date-text').textContent = formattedDate;
 
-                // Update stats
                 document.getElementById('completed-count').textContent = data.stats.completed || 0;
                 document.getElementById('processing-count').textContent = data.stats.processing || 0;
                 document.getElementById('failed-count').textContent = data.stats.failed || 0;
                 document.getElementById('callback-count').textContent = data.stats.callback || 0;
 
-                // Check if there's data
-                const hasData = data.stats.completed > 0 || data.stats.processing > 0 || 
-                               data.stats.failed > 0 || data.stats.callback > 0;
+                const hasData = data.stats.completed > 0 || data.stats.processing > 0 ||
+                    data.stats.failed > 0 || data.stats.callback > 0;
 
                 if (hasData) {
                     document.getElementById('overview-no-data').style.display = 'none';
-                    document.getElementById('overview-charts').style.display = 'flex';
-
-                    // Create charts with FIXED scaling
-                    createChart('completedChart', 'Completed', data.charts.completed || {}, '#10b981');
+                    document.getElementById('overview-charts').style.display = 'grid';
+                    createChart('completedChart', 'Completed', data.charts.completed || {}, '#22c55e');
                     createChart('processingChart', 'Processing', data.charts.processing || {}, '#f59e0b');
-                    createChart('failedChart', 'Failed', data.charts.failed || {}, '#dc2626');
+                    createChart('failedChart', 'Failed', data.charts.failed || {}, '#ef4444');
                     createChart('callbackChart', 'Callback', data.charts.callback || {}, '#8b5cf6');
                 } else {
-                    document.getElementById('overview-no-data').style.display = 'block';
+                    document.getElementById('overview-no-data').style.display = 'flex';
                     document.getElementById('overview-charts').style.display = 'none';
                 }
-
             } catch (error) {
                 console.error('Error loading overview:', error);
                 showToast('Error loading overview data', 'error');
@@ -722,50 +648,58 @@
 
         function createChart(canvasId, label, chartData, color) {
             const ctx = document.getElementById(canvasId);
-
-            if (charts[canvasId.replace('Chart', '')]) {
-                charts[canvasId.replace('Chart', '')].destroy();
-            }
+            const chartKey = canvasId.replace('Chart', '');
+            if (charts[chartKey]) charts[chartKey].destroy();
 
             const labels = Object.keys(chartData);
             const data = Object.values(chartData);
-
-            // Calculate max value for proper scaling
             const maxValue = Math.max(...data, 1);
-            const suggestedMax = Math.ceil(maxValue * 1.1); // Add 10% padding
+            const suggestedMax = Math.ceil(maxValue * 1.15);
 
-            charts[canvasId.replace('Chart', '')] = new Chart(ctx, {
+            // Vibrant gradient
+            const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 280);
+            gradient.addColorStop(0, color + '65');
+            gradient.addColorStop(0.5, color + '35');
+            gradient.addColorStop(1, color + '10');
+
+            charts[chartKey] = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
                         label: label,
                         data: data,
-                        backgroundColor: color + 'CC',
+                        backgroundColor: gradient,
                         borderColor: color,
                         borderWidth: 2,
-                        borderRadius: 8,
+                        borderRadius: 6,
                         barPercentage: 0.7,
-                        categoryPercentage: 0.8
+                        borderSkipped: false,
+                        hoverBackgroundColor: color + '70',
+                        hoverBorderColor: color
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: {
+                        duration: 600,
+                        easing: 'easeOutQuart'
+                    },
                     plugins: {
-                        legend: { 
-                            display: false 
-                        },
+                        legend: { display: false },
                         tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                            borderColor: 'rgba(255, 255, 255, 0.08)',
+                            borderWidth: 1,
                             padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 },
+                            titleFont: { size: 12, weight: '500', family: "'Inter', sans-serif" },
+                            bodyFont: { size: 11, family: "'Inter', sans-serif" },
                             cornerRadius: 8,
+                            displayColors: false,
                             callbacks: {
-                                label: function(context) {
-                                    return label + ': ' + context.parsed.y.toLocaleString() + ' tickets';
-                                }
+                                title: (items) => items[0].label,
+                                label: (item) => `${label}: ${item.parsed.y.toLocaleString()}`
                             }
                         }
                     },
@@ -773,32 +707,32 @@
                         y: {
                             beginAtZero: true,
                             suggestedMax: suggestedMax,
-                            grace: '10%',
-                            ticks: { 
-                                font: { size: 12, weight: '600' },
-                                precision: 0,
-                                callback: function(value) {
-                                    if (value >= 1000) {
-                                        return (value / 1000).toFixed(1) + 'K';
-                                    }
-                                    return value;
-                                }
+                            border: { display: false },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.35)',
+                                font: { size: 10, weight: '500' },
+                                padding: 8,
+                                callback: (value) => value >= 1000 ? (value / 1000).toFixed(0) + 'K' : value
                             },
-                            grid: { 
-                                color: 'rgba(0, 0, 0, 0.05)',
-                                drawBorder: false
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.04)',
+                                lineWidth: 1
                             }
                         },
                         x: {
-                            ticks: { 
-                                font: { size: 12, weight: '600' },
+                            border: { display: false },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.35)',
+                                font: { size: 10, weight: '500' },
                                 maxRotation: 45,
-                                minRotation: 45
+                                padding: 4
                             },
-                            grid: { 
-                                display: false 
-                            }
+                            grid: { display: false }
                         }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
                     }
                 }
             });
@@ -806,18 +740,18 @@
 
         function manualReload() {
             loadOverviewData();
-            showToast('Data reloaded successfully', 'success');
+            showToast('Data reloaded', 'success');
         }
 
-        // Auto-refresh toggle
-        document.getElementById('auto-refresh-toggle').addEventListener('change', function(e) {
+        // Auto-refresh
+        document.getElementById('auto-refresh-toggle').addEventListener('change', function (e) {
             const intervalInput = document.getElementById('refresh-interval');
             intervalInput.disabled = !e.target.checked;
 
             if (e.target.checked) {
                 const seconds = parseInt(intervalInput.value);
                 refreshInterval = setInterval(loadOverviewData, seconds * 1000);
-                showToast(`Auto-refresh enabled (every ${seconds}s)`, 'success');
+                showToast(`Auto-refresh enabled (${seconds}s)`, 'success');
             } else {
                 if (refreshInterval) {
                     clearInterval(refreshInterval);
@@ -825,19 +759,18 @@
                 }
                 showToast('Auto-refresh disabled', 'success');
             }
+            persistCurrentState();
         });
 
         // ============================================================================
-        // CLIENT TAB FUNCTIONS
+        // CLIENT FUNCTIONS
         // ============================================================================
         async function loadClientList() {
             try {
                 const response = await fetch('/api/clients');
                 const data = await response.json();
-
                 const select = document.getElementById('client-id-select');
                 select.innerHTML = '<option value="">-- Select a Client --</option>';
-
                 data.client_ids.forEach(clientId => {
                     const option = document.createElement('option');
                     option.value = clientId;
@@ -854,7 +787,7 @@
 
             if (!clientId) {
                 document.getElementById('client-data-container').style.display = 'none';
-                document.getElementById('client-no-data').style.display = 'block';
+                document.getElementById('client-no-data').style.display = 'flex';
                 return;
             }
 
@@ -864,27 +797,24 @@
 
                 if (data.total_tickets === 0) {
                     document.getElementById('client-data-container').style.display = 'none';
-                    document.getElementById('client-no-data').style.display = 'block';
+                    document.getElementById('client-no-data').style.display = 'flex';
                     return;
                 }
 
                 document.getElementById('client-data-container').style.display = 'block';
                 document.getElementById('client-no-data').style.display = 'none';
 
-                // Update stats
                 document.getElementById('client-completed-count').textContent = data.stats.completed || 0;
                 document.getElementById('client-processing-count').textContent = data.stats.processing || 0;
                 document.getElementById('client-failed-count').textContent = data.stats.failed || 0;
                 document.getElementById('client-callback-count').textContent = data.stats.callback || 0;
 
-                // Create charts
-                createClientChart('clientCompletedChart', 'Completed', data.daily.completed || {}, '#10b981');
+                createClientChart('clientCompletedChart', 'Completed', data.daily.completed || {}, '#22c55e');
                 createClientChart('clientProcessingChart', 'Processing', data.daily.processing || {}, '#f59e0b');
-                createClientChart('clientFailedChart', 'Failed', data.daily.failed || {}, '#dc2626');
+                createClientChart('clientFailedChart', 'Failed', data.daily.failed || {}, '#ef4444');
                 createClientChart('clientCallbackChart', 'Callback', data.daily.callback || {}, '#8b5cf6');
 
-            persistCurrentState();
-
+                persistCurrentState();
             } catch (error) {
                 console.error('Error loading client data:', error);
                 showToast('Error loading client data', 'error');
@@ -893,56 +823,63 @@
 
         function createClientChart(canvasId, label, chartData, color) {
             const ctx = document.getElementById(canvasId);
-
-            if (charts[canvasId.replace('Chart', '')]) {
-                charts[canvasId.replace('Chart', '')].destroy();
-            }
+            const chartKey = canvasId.replace('Chart', '');
+            if (charts[chartKey]) charts[chartKey].destroy();
 
             const labels = Object.keys(chartData);
             const data = Object.values(chartData);
-
-            // Calculate max for scaling
             const maxValue = Math.max(...data, 1);
-            const suggestedMax = Math.ceil(maxValue * 1.1);
 
-            charts[canvasId.replace('Chart', '')] = new Chart(ctx, {
+            // Vibrant gradient
+            const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 280);
+            gradient.addColorStop(0, color + '65');
+            gradient.addColorStop(0.5, color + '35');
+            gradient.addColorStop(1, color + '10');
+
+            charts[chartKey] = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
                         label: label,
                         data: data,
-                        backgroundColor: color + 'CC',
+                        backgroundColor: gradient,
                         borderColor: color,
-                        borderWidth: 2, borderRadius: 8, barPercentage: 0.7, categoryPercentage: 0.8
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        barPercentage: 0.7,
+                        hoverBackgroundColor: color + '70',
+                        hoverBorderColor: color
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 600, easing: 'easeOutQuart' },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                            borderColor: 'rgba(255, 255, 255, 0.08)',
+                            borderWidth: 1,
                             padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 },
-                            cornerRadius: 8
+                            cornerRadius: 8,
+                            titleFont: { size: 12, weight: '500' },
+                            bodyFont: { size: 11 },
+                            displayColors: false
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            suggestedMax: suggestedMax,
-                            grace: '10%',
-                            ticks: { 
-                                font: { size: 12, weight: '600' },
-                                precision: 0
-                            },
-                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                            suggestedMax: Math.ceil(maxValue * 1.15),
+                            border: { display: false },
+                            ticks: { color: 'rgba(255, 255, 255, 0.35)', font: { size: 10, weight: '500' }, padding: 8 },
+                            grid: { color: 'rgba(255, 255, 255, 0.04)' }
                         },
                         x: {
-                            ticks: { font: { size: 12, weight: '600' } },
+                            border: { display: false },
+                            ticks: { color: 'rgba(255, 255, 255, 0.35)', font: { size: 10, weight: '500' } },
                             grid: { display: false }
                         }
                     }
@@ -951,7 +888,7 @@
         }
 
         // ============================================================================
-        // DATE RANGE TAB FUNCTIONS
+        // DATE RANGE FUNCTIONS
         // ============================================================================
         async function loadClientListForRange() {
             try {
@@ -961,14 +898,10 @@
 
                 const container = document.getElementById('client-options');
                 container.innerHTML = '';
-
                 allClients.forEach(clientId => {
                     const div = document.createElement('div');
                     div.className = 'multi-select-option';
-                    div.innerHTML = `
-                        <input type="checkbox" value="${clientId}" onchange="updateSelectedClients()">
-                        <span>${clientId}</span>
-                    `;
+                    div.innerHTML = `<input type="checkbox" value="${clientId}" onchange="updateSelectedClients()"><span>${clientId}</span>`;
                     container.appendChild(div);
                 });
             } catch (error) {
@@ -979,7 +912,6 @@
         function toggleClientDropdown() {
             const dropdown = document.getElementById('client-dropdown');
             const trigger = document.getElementById('client-multi-select-trigger');
-
             if (dropdown.style.display === 'none') {
                 dropdown.style.display = 'flex';
                 trigger.classList.add('open');
@@ -991,40 +923,31 @@
 
         function filterClients() {
             const searchTerm = document.getElementById('client-search').value.toLowerCase();
-            const options = document.querySelectorAll('.multi-select-option');
-
-            options.forEach(option => {
+            document.querySelectorAll('.multi-select-option').forEach(option => {
                 const text = option.textContent.toLowerCase();
                 option.style.display = text.includes(searchTerm) ? 'flex' : 'none';
             });
         }
 
         function updateSelectedClients() {
-            // persist selection
-
             selectedClients.clear();
-            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]:checked');
-            checkboxes.forEach(cb => selectedClients.add(cb.value));
-
-            const text = selectedClients.size === 0 ? 'All Clients' : `${selectedClients.size} client(s) selected`;
+            document.querySelectorAll('#client-options input[type="checkbox"]:checked').forEach(cb => selectedClients.add(cb.value));
+            const text = selectedClients.size === 0 ? 'All Clients' : `${selectedClients.size} selected`;
             document.getElementById('client-selected-text').textContent = text;
             persistCurrentState();
         }
 
         function selectAllClients() {
-            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
-            checkboxes.forEach(cb => cb.checked = true);
+            document.querySelectorAll('#client-options input[type="checkbox"]').forEach(cb => cb.checked = true);
             updateSelectedClients();
         }
 
         function clearAllClients() {
-            const checkboxes = document.querySelectorAll('#client-options input[type="checkbox"]');
-            checkboxes.forEach(cb => cb.checked = false);
+            document.querySelectorAll('#client-options input[type="checkbox"]').forEach(cb => cb.checked = false);
             updateSelectedClients();
         }
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
+        document.addEventListener('click', function (event) {
             const wrapper = document.querySelector('.multi-select-wrapper');
             if (wrapper && !wrapper.contains(event.target)) {
                 document.getElementById('client-dropdown').style.display = 'none';
@@ -1037,7 +960,7 @@
             const endDate = document.getElementById('range-end-date').value;
 
             if (!startDate || !endDate) {
-                showToast('Please select both start and end dates', 'error');
+                showToast('Please select both dates', 'error');
                 return;
             }
 
@@ -1045,12 +968,11 @@
             const noDataDiv = document.getElementById('range-no-data');
 
             resultsDiv.style.display = 'none';
-            noDataDiv.style.display = 'block';
-            noDataDiv.innerHTML = '<div class="no-data-icon"><div class="loading"></div></div><div class="no-data-text">Analyzing data...</div>';
+            noDataDiv.style.display = 'flex';
+            noDataDiv.innerHTML = '<div class="empty-icon"><div class="loading"></div></div><div class="empty-title">Analyzing...</div>';
 
             try {
                 let url = `/api/ticket-data-range?start_date=${startDate}&end_date=${endDate}`;
-
                 if (selectedClients.size > 0) {
                     url += `&client_ids=${Array.from(selectedClients).join(',')}`;
                 }
@@ -1058,30 +980,22 @@
                 const response = await fetch(url);
                 const data = await response.json();
 
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to fetch data');
-                }
+                if (!data.success) throw new Error(data.error || 'Failed to fetch data');
 
-                // Update stats
                 document.getElementById('range-completed').textContent = data.total_stats.completed || 0;
                 document.getElementById('range-processing').textContent = data.total_stats.processing || 0;
                 document.getElementById('range-failed').textContent = data.total_stats.failed || 0;
                 document.getElementById('range-callback').textContent = data.total_stats.callback || 0;
 
-                // Create trend chart
                 createRangeTrendChart(data.daily_breakdown);
-
-                // Create client breakdown chart
                 createRangeClientChart(data.client_breakdown);
 
                 noDataDiv.style.display = 'none';
                 resultsDiv.style.display = 'block';
-
-                showToast('Analysis completed successfully', 'success');
-
+                showToast('Analysis complete', 'success');
             } catch (error) {
                 console.error('Range analysis error:', error);
-                noDataDiv.innerHTML = '<div class="no-data-icon">❌</div><div class="no-data-text">Error analyzing data: ' + error.message + '</div>';
+                noDataDiv.innerHTML = `<div class="empty-icon">❌</div><div class="empty-title">Error</div><div class="empty-text">${error.message}</div>`;
                 showToast('Error analyzing data', 'error');
             }
         }
@@ -1090,247 +1004,107 @@
             const ctx = document.getElementById('rangeTrendChart');
             if (charts.rangeTrend) charts.rangeTrend.destroy();
 
-            const allVals = [
-                ...(dailyData.completed || []),
-                ...(dailyData.processing || []),
-                ...(dailyData.failed || []),
-                ...(dailyData.callback || [])
-            ];
-            const maxValue = Math.max(...allVals, 1);
-            const suggestedMax = Math.ceil(maxValue * 1.1);
-
             charts.rangeTrend = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: dailyData.dates,
-                    datasets: [
-                        { label: 'Completed', data: dailyData.completed, backgroundColor: '#10b981CC', borderColor: '#10b981', borderWidth: 2, borderRadius: 8 },
-                        { label: 'Processing', data: dailyData.processing, backgroundColor: '#f59e0bCC', borderColor: '#f59e0b', borderWidth: 2, borderRadius: 8 },
-                        { label: 'Failed', data: dailyData.failed, backgroundColor: '#dc2626CC', borderColor: '#dc2626', borderWidth: 2, borderRadius: 8 },
-                        { label: 'Callback', data: dailyData.callback, backgroundColor: '#8b5cf6CC', borderColor: '#8b5cf6', borderWidth: 2, borderRadius: 8 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'top', labels: { font: { size: 14, weight: 600 }, padding: 15, usePointStyle: true } },
-                        tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.8)', padding: 12, titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 13 }, cornerRadius: 8 }
-                    },
-                    scales: {
-                        y: { beginAtZero: true, suggestedMax: suggestedMax, grace: '10%', ticks: { font: { size: 12, weight: 600 }, precision: 0 }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
-                        x: { ticks: { font: { size: 12, weight: 600 } }, grid: { display: false } }
-                    }
-                }
-            });
-        }
-
-
-            charts.rangeTrend = new Chart(ctx, {
-                type: 'line',
-                data: {
                     labels: dailyData.dates || [],
                     datasets: [
-                        {
-                            label: 'Completed',
-                            data: dailyData.completed || [],
-                            borderColor: '#10b981',
-                            backgroundColor: '#10b98133',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Processing',
-                            data: dailyData.processing || [],
-                            borderColor: '#f59e0b',
-                            backgroundColor: '#f59e0b33',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Failed',
-                            data: dailyData.failed || [],
-                            borderColor: '#dc2626',
-                            backgroundColor: '#dc262633',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Callback',
-                            data: dailyData.callback || [],
-                            borderColor: '#8b5cf6',
-                            backgroundColor: '#8b5cf633',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4
-                        }
+                        { label: 'Completed', data: dailyData.completed || [], backgroundColor: 'rgba(34, 197, 94, 0.45)', borderColor: 'rgba(34, 197, 94, 0.8)', borderWidth: 1, borderRadius: 4, hoverBackgroundColor: 'rgba(34, 197, 94, 0.65)' },
+                        { label: 'Processing', data: dailyData.processing || [], backgroundColor: 'rgba(245, 158, 11, 0.45)', borderColor: 'rgba(245, 158, 11, 0.8)', borderWidth: 1, borderRadius: 4, hoverBackgroundColor: 'rgba(245, 158, 11, 0.65)' },
+                        { label: 'Failed', data: dailyData.failed || [], backgroundColor: 'rgba(239, 68, 68, 0.45)', borderColor: 'rgba(239, 68, 68, 0.8)', borderWidth: 1, borderRadius: 4, hoverBackgroundColor: 'rgba(239, 68, 68, 0.65)' },
+                        { label: 'Callback', data: dailyData.callback || [], backgroundColor: 'rgba(139, 92, 246, 0.45)', borderColor: 'rgba(139, 92, 246, 0.8)', borderWidth: 1, borderRadius: 4, hoverBackgroundColor: 'rgba(139, 92, 246, 0.65)' }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 600, easing: 'easeOutQuart' },
                     plugins: {
                         legend: {
                             display: true,
                             position: 'top',
                             labels: {
-                                font: { size: 14, weight: '600' },
-                                padding: 15,
-                                usePointStyle: true
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                font: { size: 11, weight: '500' },
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                padding: 16,
+                                boxWidth: 6,
+                                boxHeight: 6
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                            borderColor: 'rgba(255, 255, 255, 0.08)',
+                            borderWidth: 1,
                             padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 },
-                            cornerRadius: 8
+                            cornerRadius: 8,
+                            titleFont: { size: 12, weight: '500' },
+                            bodyFont: { size: 11 }
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: { 
-                                font: { size: 12, weight: '600' },
-                                precision: 0
-                            },
-                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                            border: { display: false },
+                            ticks: { color: 'rgba(255, 255, 255, 0.35)', font: { size: 10, weight: '500' }, padding: 8 },
+                            grid: { color: 'rgba(255, 255, 255, 0.04)' }
                         },
                         x: {
-                            ticks: { font: { size: 12, weight: '600' } },
+                            border: { display: false },
+                            ticks: { color: 'rgba(255, 255, 255, 0.35)', font: { size: 10, weight: '500' }, maxRotation: 45 },
                             grid: { display: false }
                         }
                     }
                 }
             });
-        
+        }
 
         function createRangeClientChart(clientData) {
-            if (charts.rangeClient) {
-                charts.rangeClient.destroy();
-                charts.rangeClient = null;
-            }
-
             const container = document.getElementById('rangeClientCards');
-            if (!container) return;
             container.innerHTML = '';
 
             const clients = Object.keys(clientData || {});
             clients.sort((a, b) => (clientData[b]?.total || 0) - (clientData[a]?.total || 0));
             const topClients = clients.slice(0, 10);
 
-            topClients.forEach((clientId) => {
+            topClients.forEach(clientId => {
                 const d = clientData[clientId] || {};
                 const card = document.createElement('div');
                 card.className = 'client-card';
-
                 card.innerHTML = `
-                    <div class="client-card-header">${clientId}</div>
-                    <div class="client-card-stats">
-                        <div class="client-stat-row"><span class="client-stat-label">Total</span><span class="client-stat-value">${(d.total || 0).toLocaleString()}</span></div>
-                        <div class="client-stat-row"><span class="client-stat-label">Completed</span><span class="client-stat-value completed">${(d.completed || 0).toLocaleString()}</span></div>
-                        <div class="client-stat-row"><span class="client-stat-label">Processing</span><span class="client-stat-value processing">${(d.processing || 0).toLocaleString()}</span></div>
-                        <div class="client-stat-row"><span class="client-stat-label">Failed</span><span class="client-stat-value failed">${(d.failed || 0).toLocaleString()}</span></div>
-                        <div class="client-stat-row"><span class="client-stat-label">Callback</span><span class="client-stat-value callback">${(d.callback || 0).toLocaleString()}</span></div>
+                    <div class="client-header">${clientId}</div>
+                    <div class="client-stats">
+                        <div class="client-stat"><span>Total</span><strong>${(d.total || 0).toLocaleString()}</strong></div>
+                        <div class="client-stat"><span>Completed</span><strong class="completed">${(d.completed || 0).toLocaleString()}</strong></div>
+                        <div class="client-stat"><span>Processing</span><strong class="processing">${(d.processing || 0).toLocaleString()}</strong></div>
+                        <div class="client-stat"><span>Failed</span><strong class="failed">${(d.failed || 0).toLocaleString()}</strong></div>
+                        <div class="client-stat"><span>Callback</span><strong class="callback">${(d.callback || 0).toLocaleString()}</strong></div>
                     </div>
                 `;
-
                 container.appendChild(card);
             });
         }
-
-
-            const clients = Object.keys(clientData).slice(0, 10);
-            const totals = clients.map(client => clientData[client].total);
-
-            charts.rangeClient = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: clients,
-                    datasets: [{
-                        label: 'Total Tickets',
-                        data: totals,
-                        backgroundColor: '#3b82f6CC',
-                        borderColor: '#3b82f6',
-                        borderWidth: 2,
-                        borderRadius: 8
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 },
-                            cornerRadius: 8,
-                            callbacks: {
-                                label: function(context) {
-                                    const client = context.label;
-                                    const data = clientData[client];
-                                    return [
-                                        `Total: ${data.total}`,
-                                        `Completed: ${data.completed}`,
-                                        `Processing: ${data.processing}`,
-                                        `Failed: ${data.failed}`,
-                                        `Callback: ${data.callback}`
-                                    ];
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            ticks: { 
-                                font: { size: 12, weight: '600' },
-                                precision: 0
-                            },
-                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
-                        },
-                        y: {
-                            ticks: { font: { size: 12, weight: '600' } },
-                            grid: { display: false }
-                        }
-                    }
-                }
-            });
-        
 
         // ============================================================================
         // TOKEN ANALYTICS FUNCTIONS
         // ============================================================================
         async function loadTokenAnalyticsClients() {
             const select = document.getElementById('token-client-select');
-
-            if (select.options.length > 1) {
-                return;
-            }
+            if (select.options.length > 1) return;
 
             try {
                 const response = await fetch('/api/clients');
                 const data = await response.json();
-
                 select.innerHTML = '<option value="all">All Clients</option>';
-
                 data.client_ids.forEach(clientId => {
                     const option = document.createElement('option');
                     option.value = clientId;
                     option.textContent = clientId;
                     select.appendChild(option);
                 });
-
-                console.log(`Loaded ${data.client_ids.length} clients for token analytics`);
             } catch (error) {
-                console.error('Error loading clients for token analytics:', error);
-                showToast('Error loading client list', 'error');
+                console.error('Error loading clients:', error);
             }
         }
 
@@ -1340,7 +1114,7 @@
             const clientId = document.getElementById('token-client-select').value;
 
             if (!startDate || !endDate) {
-                showToast('Please select both start and end dates', 'error');
+                showToast('Please select both dates', 'error');
                 return;
             }
 
@@ -1348,79 +1122,70 @@
             const noDataDiv = document.getElementById('token-no-data');
 
             resultsDiv.style.display = 'none';
-            noDataDiv.style.display = 'block';
-            noDataDiv.innerHTML = '<div class="no-data-icon"><div class="loading"></div></div><div class="no-data-text">Loading token analytics...</div>';
+            noDataDiv.style.display = 'flex';
+            noDataDiv.innerHTML = '<div class="empty-icon"><div class="loading"></div></div><div class="empty-title">Loading...</div>';
 
             try {
-                const params = new URLSearchParams({
-                    start_date: startDate,
-                    end_date: endDate
-                });
-
-                if (clientId && clientId !== 'all') {
-                    params.append('client_id', clientId);
-                }
+                const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+                if (clientId && clientId !== 'all') params.append('client_id', clientId);
 
                 const response = await fetch(`/api/token-analytics?${params}`);
                 const data = await response.json();
 
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to fetch token analytics');
-                }
+                if (!data.success) throw new Error(data.error || 'Failed to fetch token analytics');
 
                 if (data.models.length === 0) {
-                    noDataDiv.innerHTML = '<div class="no-data-icon">📊</div><div class="no-data-text">No token usage data found for the selected period</div>';
+                    noDataDiv.innerHTML = '<div class="empty-icon">📊</div><div class="empty-title">No data</div><div class="empty-text">No token usage found for this period</div>';
                     return;
                 }
 
-                // Update stats cards
                 document.getElementById('token-total-tokens').textContent = data.totals.total_tokens.toLocaleString();
                 document.getElementById('token-total-cost').textContent = '$' + data.totals.total_cost.toFixed(4);
                 document.getElementById('token-requests').textContent = data.totals.request_count.toLocaleString();
                 document.getElementById('token-models').textContent = data.models.length;
 
-                // Create chart
                 createTokenChart(data.models);
 
                 noDataDiv.style.display = 'none';
                 resultsDiv.style.display = 'block';
-
-                showToast('Token analytics loaded successfully', 'success');
-
+                showToast('Token analytics loaded', 'success');
             } catch (error) {
                 console.error('Token analytics error:', error);
-                noDataDiv.innerHTML = '<div class="no-data-icon">❌</div><div class="no-data-text">Error loading token analytics: ' + error.message + '</div>';
+                noDataDiv.innerHTML = `<div class="empty-icon">❌</div><div class="empty-title">Error</div><div class="empty-text">${error.message}</div>`;
                 showToast('Error loading token analytics', 'error');
             }
         }
 
         function createTokenChart(models) {
             const ctx = document.getElementById('tokenChart');
-
-            if (charts.token) {
-                charts.token.destroy();
-            }
+            if (charts.token) charts.token.destroy();
 
             const labels = models.map(m => m.model);
             const tokenData = models.map(m => m.total_tokens);
-            const inputCosts = models.map(m => m.input_cost);
-            const outputCosts = models.map(m => m.output_cost);
-            const thoughtsCosts = models.map(m => m.thoughts_cost);
-            const totalCosts = models.map(m => m.total_cost);
 
-            const backgroundColors = models.map((_, i) => {
-                const hue = (i * 360 / models.length) % 360;
-                return `hsla(${hue}, 70%, 60%, 0.8)`;
-            });
-
-            const borderColors = models.map((_, i) => {
-                const hue = (i * 360 / models.length) % 360;
-                return `hsla(${hue}, 70%, 50%, 1)`;
-            });
-
-            // Calculate max for scaling
-            const maxValue = Math.max(...tokenData, 1);
-            const suggestedMax = Math.ceil(maxValue * 1.1);
+            // Vibrant color palette
+            const vibrantColors = [
+                'rgba(139, 92, 246, 0.55)',   // Purple
+                'rgba(59, 130, 246, 0.55)',   // Blue
+                'rgba(34, 197, 94, 0.55)',    // Green
+                'rgba(245, 158, 11, 0.55)',   // Amber
+                'rgba(239, 68, 68, 0.55)',    // Red
+                'rgba(20, 184, 166, 0.55)',   // Teal
+                'rgba(236, 72, 153, 0.55)',   // Pink
+                'rgba(132, 204, 22, 0.55)',   // Lime
+            ];
+            const borderPalette = [
+                'rgba(139, 92, 246, 1)',
+                'rgba(59, 130, 246, 1)',
+                'rgba(34, 197, 94, 1)',
+                'rgba(245, 158, 11, 1)',
+                'rgba(239, 68, 68, 1)',
+                'rgba(20, 184, 166, 1)',
+                'rgba(236, 72, 153, 1)',
+                'rgba(132, 204, 22, 1)',
+            ];
+            const colors = models.map((_, i) => vibrantColors[i % vibrantColors.length]);
+            const borderColors = models.map((_, i) => borderPalette[i % borderPalette.length]);
 
             charts.token = new Chart(ctx, {
                 type: 'bar',
@@ -1429,56 +1194,39 @@
                     datasets: [{
                         label: 'Total Tokens',
                         data: tokenData,
-                        backgroundColor: backgroundColors,
+                        backgroundColor: colors,
                         borderColor: borderColors,
                         borderWidth: 2,
-                        borderRadius: 8,
-                        inputCosts: inputCosts,
-                        outputCosts: outputCosts,
-                        thoughtsCosts: thoughtsCosts,
-                        totalCosts: totalCosts
+                        borderRadius: 6,
+                        hoverBackgroundColor: borderColors
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 600, easing: 'easeOutQuart' },
                     plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: {
-                                font: { size: 14, weight: '600' },
-                                padding: 15,
-                                usePointStyle: true
-                            }
-                        },
+                        legend: { display: false },
                         tooltip: {
-                            enabled: true,
-                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                            padding: 16,
-                            titleFont: { size: 15, weight: 'bold' },
-                            bodyFont: { size: 14 },
-                            bodySpacing: 6,
-                            cornerRadius: 8,
+                            backgroundColor: 'rgba(26, 26, 26, 0.98)',
+                            borderColor: 'rgba(255, 255, 255, 0.12)',
+                            borderWidth: 1,
+                            padding: 14,
+                            cornerRadius: 10,
+                            titleFont: { size: 13, weight: '600' },
+                            bodyFont: { size: 11, family: "'IBM Plex Mono', monospace" },
                             displayColors: false,
                             callbacks: {
-                                title: function(context) {
-                                    return context[0].label;
-                                },
-                                label: function(context) {
-                                    const index = context.dataIndex;
-                                    const dataset = context.dataset;
-
+                                title: (items) => items[0].label,
+                                label: ctx => {
+                                    const model = models[ctx.dataIndex];
                                     return [
-                                        `Total Tokens: ${context.parsed.y.toLocaleString()}`,
+                                        `Total Tokens: ${ctx.parsed.y.toLocaleString()}`,
                                         '',
-                                        `💵 Cost Breakdown:`,
-                                        `  Input Cost: $${dataset.inputCosts[index].toFixed(6)}`,
-                                        `  Output Cost: $${dataset.outputCosts[index].toFixed(6)}`,
-                                        dataset.thoughtsCosts[index] > 0 ? `  Thoughts Cost: $${dataset.thoughtsCosts[index].toFixed(6)}` : null,
-                                        `  ───────────────`,
-                                        `  Total Cost: $${dataset.totalCosts[index].toFixed(6)}`
-                                    ].filter(line => line !== null);
+                                        `Input Cost:   $${model.input_cost.toFixed(4)}`,
+                                        `Output Cost:  $${model.output_cost.toFixed(4)}`,
+                                        `Total Cost:   $${model.total_cost.toFixed(4)}`
+                                    ];
                                 }
                             }
                         }
@@ -1486,37 +1234,19 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            suggestedMax: suggestedMax,
-                            grace: '10%',
+                            border: { display: false },
                             ticks: {
-                                font: { size: 12, weight: '600' },
-                                callback: function(value) {
-                                    if (value >= 1000000) {
-                                        return (value / 1000000).toFixed(1) + 'M';
-                                    } else if (value >= 1000) {
-                                        return (value / 1000).toFixed(1) + 'K';
-                                    }
-                                    return value;
-                                }
+                                color: 'rgba(255, 255, 255, 0.35)',
+                                font: { size: 10, weight: '500' },
+                                padding: 8,
+                                callback: v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v
                             },
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Total Tokens',
-                                font: { size: 14, weight: 'bold' }
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.04)' }
                         },
                         x: {
-                            ticks: {
-                                font: { size: 12, weight: '600' },
-                                maxRotation: 45,
-                                minRotation: 45
-                            },
-                            grid: {
-                                display: false
-                            }
+                            border: { display: false },
+                            ticks: { color: 'rgba(255, 255, 255, 0.35)', font: { size: 10, weight: '500' }, maxRotation: 45, padding: 4 },
+                            grid: { display: false }
                         }
                     },
                     interaction: {
@@ -1542,13 +1272,7 @@
                 const modalTitle = document.getElementById('modalTitle');
                 const tableBody = document.getElementById('ticketsTableBody');
 
-                const statusColors = {
-                    'completed': 'modal-title-completed',
-                    'processing': 'modal-title-processing',
-                    'failed': 'modal-title-failed',
-                    'callback': 'modal-title-callback'
-                };
-                modalTitle.className = statusColors[status] || '';
+                modalTitle.className = 'modal-title-' + status;
                 modalTitle.textContent = `${status.charAt(0).toUpperCase() + status.slice(1)} Tickets (${data.tickets.length})`;
 
                 tableBody.innerHTML = '';
@@ -1567,7 +1291,6 @@
 
                 modal.classList.add('is-visible');
                 document.body.classList.add('modal-open');
-
             } catch (error) {
                 console.error('Error loading tickets:', error);
                 showToast('Error loading tickets', 'error');
@@ -1575,15 +1298,12 @@
         }
 
         function closeTicketModal() {
-            const modal = document.getElementById('ticketModal');
-            modal.classList.remove('is-visible');
+            document.getElementById('ticketModal').classList.remove('is-visible');
             document.body.classList.remove('modal-open');
         }
 
-        document.getElementById('ticketModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeTicketModal();
-            }
+        document.getElementById('ticketModal').addEventListener('click', function (e) {
+            if (e.target === this) closeTicketModal();
         });
 
         // ============================================================================
@@ -1594,16 +1314,13 @@
             toast.className = `toast ${type}`;
             toast.textContent = message;
             document.body.appendChild(toast);
-
-            setTimeout(() => {
-                toast.remove();
-            }, 3000);
+            setTimeout(() => toast.remove(), 3000);
         }
 
         // ============================================================================
         // INITIALIZATION
         // ============================================================================
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('overview-date').value = today;
 
@@ -1614,10 +1331,48 @@
             document.getElementById('range-end-date').valueAsDate = endDate;
             document.getElementById('range-start-date').valueAsDate = startDate;
 
-            loadOverviewData();
-
             document.getElementById('overview-date').addEventListener('change', loadOverviewData);
+
+            // Restore saved tab or default to overview
+            const savedTab = localStorage.getItem('activeTab') || 'overview';
+            restoreTab(savedTab);
         });
+
+        // Function to restore tab without requiring event
+        function restoreTab(tabName) {
+            document.querySelectorAll('.tab-panel').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+
+            const tabPanel = document.getElementById(tabName + '-tab');
+            if (tabPanel) {
+                tabPanel.classList.add('active');
+            } else {
+                // Fallback to overview if saved tab doesn't exist
+                document.getElementById('overview-tab').classList.add('active');
+                tabName = 'overview';
+            }
+
+            // Activate the corresponding nav button
+            const navButtons = document.querySelectorAll('.nav-item');
+            const tabIndex = { 'overview': 0, 'client': 1, 'date-range': 2, 'token-analytics': 3 };
+            if (navButtons[tabIndex[tabName]]) {
+                navButtons[tabIndex[tabName]].classList.add('active');
+            }
+
+            // Load data for the restored tab
+            if (tabName === 'overview') loadOverviewData();
+            else if (tabName === 'client') loadClientList();
+            else if (tabName === 'date-range') loadClientListForRange();
+            else if (tabName === 'token-analytics') {
+                loadTokenAnalyticsClients();
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 7);
+                document.getElementById('token-end-date').valueAsDate = endDate;
+                document.getElementById('token-start-date').valueAsDate = startDate;
+            }
+        }
     </script>
 </body>
+
 </html>
