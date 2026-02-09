@@ -4,16 +4,16 @@ A modern, real-time analytics dashboard for tracking ticket status and token usa
 
 ![Dashboard Preview](https://img.shields.io/badge/Status-Active-success)
 
-## ✨ Features
+##  Features
 
-- 📊 **Real-time Analytics** - Track completed, processing, failed, and callback tickets
-- 👥 **Client Insights** - View individual client statistics and trends
-- 📅 **Date Range Analysis** - Analyze data across custom date ranges
-- 💰 **Token Analytics** - Monitor LLM token usage and costs by model
-- ⚡ **Fast Performance** - Redis caching handles millions of records
-- 🎨 **Modern UI** - Clean, responsive design with smooth animations
+-  **Real-time Analytics** - Track completed, processing, failed, and callback tickets
+-  **Client Insights** - View individual client statistics and trends
+-  **Date Range Analysis** - Analyze data across custom date ranges
+-  **Token Analytics** - Monitor LLM token usage and costs by model
+-  **Fast Performance** - Redis caching handles millions of records
+-  **Modern UI** - Clean, responsive design with smooth animations
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Clone & Setup
 
@@ -47,9 +47,9 @@ redis-server
 python app.py
 ```
 
-Open **http://localhost:5000** in your browser 🎉
+Open **http://localhost:5000** in your browser 
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 dashboard/
@@ -68,7 +68,7 @@ dashboard/
 |----------|-------------|---------|
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017` |
 
-## 📖 API Reference
+## API Reference
 
 | Endpoint | Description |
 |----------|-------------|
@@ -78,13 +78,13 @@ dashboard/
 | `GET /api/ticket-data-range?start_date=...&end_date=...` | Date range data |
 | `GET /api/token-analytics?start_date=...&end_date=...` | Token usage stats |
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 - **Backend**: FastAPI, Motor (async MongoDB), Redis
 - **Frontend**: HTML, CSS, JavaScript, Chart.js
 - **Database**: MongoDB
 - **Caching**: Redis
 
-## 📝 License
+##  License
 
 MIT License
