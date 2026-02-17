@@ -942,11 +942,6 @@ templates = Jinja2Templates(directory="templates")
 # API ENDPOINTS (Optimized for millions - NO MEMORY LISTS)
 # ============================================================================
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    """Render dashboard"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
-
 @app.get("/api/stats")
 async def get_stats():
     """System statistics and health"""
@@ -1117,8 +1112,15 @@ async def get_client_tickets_7days(request: Request, client_id: str):
     start = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
     end = end_date.replace(hour=23, minute=59, second=59, microsecond=999)
     
+    # Handle client_id stored as int or string in MongoDB
+    client_id_variants = [str(client_id)]
+    try:
+        client_id_variants.append(int(client_id))
+    except (ValueError, TypeError):
+        pass
+    
     match_conditions = {
-        'client_id': str(client_id),
+        'client_id': {'$in': client_id_variants} if len(client_id_variants) > 1 else str(client_id),
         'created_at': {'$gte': start, '$lte': end}
     }
     
@@ -1447,15 +1449,42 @@ async def get_client_data(request: Request, client_id: str):
         if cached:
             return JSONResponse(content=cached)
 
-        end_date = datetime.now()
+        # Handle client_id stored as int or string in MongoDB
+        client_id_variants = [client_id]
+        try:
+            client_id_variants.append(int(client_id))
+        except (ValueError, TypeError):
+            pass
+
+        client_id_filter = {"$in": client_id_variants} if len(client_id_variants) > 1 else client_id
+
+        # Find the client's latest activity date (no fixed cutoff)
+        latest_doc = await collection.find_one(
+            {"client_id": client_id_filter},
+            {"created_at": 1, "_id": 0},
+            sort=[("created_at", -1)]
+        )
+
+        if not latest_doc or not latest_doc.get("created_at"):
+            return JSONResponse(content={
+                "client_id": client_id, "total_tickets": 0,
+                "stats": {"completed": 0, "processing": 0, "failed": 0, "callback": 0},
+                "daily": {"completed": {}, "processing": {}, "failed": {}, "callback": {}}
+            })
+
+        latest_date = latest_doc["created_at"]
+        if isinstance(latest_date, str):
+            latest_date = parser.parse(latest_date)
+
+        end_date = latest_date.replace(hour=23, minute=59, second=59, microsecond=999)
         start_date = end_date - timedelta(days=60)
 
         match_conditions = {
-            "client_id": client_id,
+            "client_id": client_id_filter,
             "created_at": {"$gte": start_date, "$lte": end_date}
         }
 
-        daily_data = await streaming_aggregate_by_date_status(match_conditions, start_date, 60)
+        daily_data = await streaming_aggregate_by_date_status(match_conditions, start_date, 61)
 
         active_dates = []
         for date_str in sorted(daily_data.keys()):
